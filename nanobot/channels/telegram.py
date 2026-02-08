@@ -222,7 +222,16 @@ class TelegramChannel(BaseChannel):
                 logger.error(f"Error sending Telegram message: {e2}")
     
     async def _send_media(self, chat_id: int, media_path: str) -> None:
-        """Send a media file to a chat."""
+        """Send a media file to a chat.
+        
+        Routes files to the appropriate Telegram API method based on extension:
+        - Images (.jpg, .png, .gif): send_photo
+        - Stickers (.webp, .tgs): send_sticker  
+        - Voice (.ogg, .oga): send_voice (OGG with OPUS codec)
+        - Audio (.mp3, .m4a, .wav, .flac): send_audio
+        - Video (.mp4, .mov, .avi, .webm): send_video
+        - Other: send_document
+        """
         if not self._app:
             return
         
@@ -237,7 +246,10 @@ class TelegramChannel(BaseChannel):
         
         try:
             with open(path, 'rb') as f:
-                if suffix in ('.jpg', '.jpeg', '.png', '.gif', '.webp'):
+                if suffix in ('.webp', '.tgs'):
+                    # Stickers: .webp (static), .tgs (animated Lottie)
+                    await self._app.bot.send_sticker(chat_id=chat_id, sticker=f)
+                elif suffix in ('.jpg', '.jpeg', '.png', '.gif'):
                     await self._app.bot.send_photo(chat_id=chat_id, photo=f)
                 elif suffix in ('.ogg', '.oga'):
                     # Voice messages must be OGG with OPUS codec
@@ -245,9 +257,7 @@ class TelegramChannel(BaseChannel):
                 elif suffix in ('.mp3', '.m4a', '.wav', '.flac'):
                     await self._app.bot.send_audio(chat_id=chat_id, audio=f)
                 elif suffix in ('.mp4', '.mov', '.avi', '.webm'):
-                    await self._app.bot.send_video(chat_id=chat_id, video=f)
-                elif suffix == '.webm':
-                    # Could be video or animated sticker - try video
+                    # Video including .webm (video stickers also work as video)
                     await self._app.bot.send_video(chat_id=chat_id, video=f)
                 else:
                     # Send as document (generic file)
