@@ -132,10 +132,10 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(CommandHandler("reset", self._on_reset))
         self._app.add_handler(CommandHandler("help", self._on_help))
         
-        # Add message handler for text, photos, voice, documents
+        # Add message handler for text, photos, voice, stickers, documents
         self._app.add_handler(
             MessageHandler(
-                (filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Document.ALL) 
+                (filters.TEXT | filters.PHOTO | filters.VOICE | filters.AUDIO | filters.Sticker.ALL | filters.Document.ALL) 
                 & ~filters.COMMAND, 
                 self._on_message
             )
@@ -348,6 +348,9 @@ class TelegramChannel(BaseChannel):
         if message.photo:
             media_file = message.photo[-1]  # Largest photo
             media_type = "image"
+        elif message.sticker:
+            media_file = message.sticker
+            media_type = "sticker"
         elif message.voice:
             media_file = message.voice
             media_type = "voice"
@@ -449,5 +452,5 @@ class TelegramChannel(BaseChannel):
             if mime_type in ext_map:
                 return ext_map[mime_type]
         
-        type_map = {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "file": ""}
+        type_map = {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "sticker": ".webp", "file": ""}
         return type_map.get(media_type, "")
