@@ -194,13 +194,20 @@ class TelegramChannel(BaseChannel):
         try:
             # chat_id should be the Telegram chat ID (integer)
             chat_id = int(msg.chat_id)
-            # Convert markdown to Telegram HTML
-            html_content = _markdown_to_telegram_html(msg.content)
-            await self._app.bot.send_message(
-                chat_id=chat_id,
-                text=html_content,
-                parse_mode="HTML"
-            )
+            
+            # Send media files first (if any)
+            for media_path in msg.media:
+                await self._send_media(chat_id, media_path)
+            
+            # Send text message (if any content)
+            if msg.content and msg.content.strip():
+                # Convert markdown to Telegram HTML
+                html_content = _markdown_to_telegram_html(msg.content)
+                await self._app.bot.send_message(
+                    chat_id=chat_id,
+                    text=html_content,
+                    parse_mode="HTML"
+                )
         except ValueError:
             logger.error(f"Invalid chat_id: {msg.chat_id}")
         except Exception as e:
@@ -213,6 +220,52 @@ class TelegramChannel(BaseChannel):
                 )
             except Exception as e2:
                 logger.error(f"Error sending Telegram message: {e2}")
+    
+    async def _send_media(self, chat_id: int, media_path: str) -> None:
+        """Send a media file to a chat.
+        
+        Routes files to the appropriate Telegram API method based on extension:
+        - Images (.jpg, .png, .gif): send_photo
+        - Stickers (.webp, .tgs): send_sticker  
+        - Voice (.ogg, .oga): send_voice (OGG with OPUS codec)
+        - Audio (.mp3, .m4a, .wav, .flac): send_audio
+        - Video (.mp4, .mov, .avi, .webm): send_video
+        - Other: send_document
+        """
+        if not self._app:
+            return
+        
+        from pathlib import Path
+        path = Path(media_path)
+        
+        if not path.exists():
+            logger.error(f"Media file not found: {media_path}")
+            return
+        
+        suffix = path.suffix.lower()
+        
+        try:
+            with open(path, 'rb') as f:
+                if suffix in ('.webp', '.tgs'):
+                    # Stickers: .webp (static), .tgs (animated Lottie)
+                    await self._app.bot.send_sticker(chat_id=chat_id, sticker=f)
+                elif suffix in ('.jpg', '.jpeg', '.png', '.gif'):
+                    await self._app.bot.send_photo(chat_id=chat_id, photo=f)
+                elif suffix in ('.ogg', '.oga'):
+                    # Voice messages must be OGG with OPUS codec
+                    await self._app.bot.send_voice(chat_id=chat_id, voice=f)
+                elif suffix in ('.mp3', '.m4a', '.wav', '.flac'):
+                    await self._app.bot.send_audio(chat_id=chat_id, audio=f)
+                elif suffix in ('.mp4', '.mov', '.avi', '.webm'):
+                    # Video including .webm (video stickers also work as video)
+                    await self._app.bot.send_video(chat_id=chat_id, video=f)
+                else:
+                    # Send as document (generic file)
+                    await self._app.bot.send_document(chat_id=chat_id, document=f)
+            
+            logger.debug(f"Sent media: {media_path}")
+        except Exception as e:
+            logger.error(f"Failed to send media {media_path}: {e}")
     
     async def _on_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command."""
