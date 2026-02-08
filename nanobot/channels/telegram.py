@@ -350,7 +350,13 @@ class TelegramChannel(BaseChannel):
             media_type = "image"
         elif message.sticker:
             media_file = message.sticker
-            media_type = "sticker"
+            # Differentiate sticker types: animated (.tgs), video (.webm), static (.webp)
+            if message.sticker.is_video:
+                media_type = "sticker_video"
+            elif message.sticker.is_animated:
+                media_type = "sticker_animated"
+            else:
+                media_type = "sticker"
         elif message.voice:
             media_file = message.voice
             media_type = "voice"
@@ -452,5 +458,13 @@ class TelegramChannel(BaseChannel):
             if mime_type in ext_map:
                 return ext_map[mime_type]
         
-        type_map = {"image": ".jpg", "voice": ".ogg", "audio": ".mp3", "sticker": ".webp", "file": ""}
+        type_map = {
+            "image": ".jpg",
+            "voice": ".ogg",
+            "audio": ".mp3",
+            "sticker": ".webp",           # Static stickers
+            "sticker_animated": ".tgs",   # Animated (Lottie) stickers
+            "sticker_video": ".webm",     # Video stickers
+            "file": ""
+        }
         return type_map.get(media_type, "")
