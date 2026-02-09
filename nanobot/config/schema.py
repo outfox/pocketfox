@@ -47,6 +47,14 @@ class DiscordConfig(BaseModel):
     intents: int = 37377  # GUILDS + GUILD_MESSAGES + DIRECT_MESSAGES + MESSAGE_CONTENT
 
 
+class SignalConfig(BaseModel):
+    """Signal channel configuration using signal-cli-rest-api."""
+    enabled: bool = False
+    api_url: str = "http://signal:8080"  # URL to signal-cli-rest-api
+    phone_number: str = ""  # Registered phone number (e.g., "+491234567890")
+    allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
+
+
 class ChannelsConfig(BaseModel):
     """Configuration for chat channels."""
     whatsapp: WhatsAppConfig = Field(default_factory=WhatsAppConfig)
@@ -54,6 +62,7 @@ class ChannelsConfig(BaseModel):
     discord: DiscordConfig = Field(default_factory=DiscordConfig)
     feishu: FeishuConfig = Field(default_factory=FeishuConfig)
     dingtalk: DingTalkConfig = Field(default_factory=DingTalkConfig)
+    signal: SignalConfig = Field(default_factory=SignalConfig)
 
 
 class AgentDefaults(BaseModel):
