@@ -53,13 +53,18 @@ class SignalChannel(BaseChannel):
     
     async def start(self) -> None:
         """Start the Signal channel by connecting to the REST API WebSocket."""
+        # Fail fast if phone number is not configured
+        if not self.config.phone_number:
+            logger.error("Signal phone_number is not configured - cannot start channel")
+            return
+        
         timeout = aiohttp.ClientTimeout(total=30)
         self._session = aiohttp.ClientSession(timeout=timeout)
         self._running = True
         
         logger.info(f"Connecting to Signal API at {self._base_url}...")
         # Redact phone number for privacy (show only last 4 digits)
-        redacted = self.config.phone_number or ""
+        redacted = self.config.phone_number
         if len(redacted) > 4:
             redacted = f"{'*' * (len(redacted) - 4)}{redacted[-4:]}"
         logger.info(f"Using phone number: {redacted}")
@@ -140,8 +145,9 @@ class SignalChannel(BaseChannel):
                     payload["base64_attachments"] = base64_attachments
             
             url = f"{self._base_url}/v2/send"
-            async with self._session.post(url, json=payload) as resp:
-                if resp.status != 200 and resp.status != 201:
+            send_timeout = aiohttp.ClientTimeout(total=30)
+            async with self._session.post(url, json=payload, timeout=send_timeout) as resp:
+                if resp.status not in (200, 201):
                     text = await resp.text()
                     logger.error(f"Failed to send Signal message: {resp.status} - {text}")
                 else:
