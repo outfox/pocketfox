@@ -5,6 +5,7 @@ import base64
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 from loguru import logger
@@ -48,7 +49,7 @@ class SignalChannel(BaseChannel):
         else:
             ws_base = "ws://" + base
         
-        return f"{ws_base}/v1/receive/{self.config.phone_number}"
+        return f"{ws_base}/v1/receive/{quote(self.config.phone_number, safe='')}"
     
     async def start(self) -> None:
         """Start the Signal channel by connecting to the REST API WebSocket."""
@@ -198,7 +199,6 @@ class SignalChannel(BaseChannel):
         for att in attachments:
             # signal-cli-rest-api provides attachment info
             att_id = att.get("id", "")
-            content_type = att.get("contentType", "")
             
             if att_id:
                 # Could download via /v1/attachments/<id> endpoint
