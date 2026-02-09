@@ -58,7 +58,11 @@ class SignalChannel(BaseChannel):
         self._running = True
         
         logger.info(f"Connecting to Signal API at {self._base_url}...")
-        logger.info(f"Using phone number: {self.config.phone_number}")
+        # Redact phone number for privacy (show only last 4 digits)
+        redacted = self.config.phone_number or ""
+        if len(redacted) > 4:
+            redacted = f"{'*' * (len(redacted) - 4)}{redacted[-4:]}"
+        logger.info(f"Using phone number: {redacted}")
         
         while self._running:
             try:
@@ -222,7 +226,8 @@ class SignalChannel(BaseChannel):
             else:
                 return
         
-        logger.info(f"Signal message from {source_name or source}: {content[:50]}...")
+        logger.info(f"Signal message from {source_name or source}")
+        logger.debug(f"Signal message preview: {content[:50]}...")
         
         await self._handle_message(
             sender_id=source,
