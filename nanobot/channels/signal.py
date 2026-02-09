@@ -101,10 +101,8 @@ class SignalChannel(BaseChannel):
                         await asyncio.sleep(5)
                 except Exception as e:
                     self._ws = None
+                    self._running = False
                     logger.error(f"Unexpected error in Signal channel: {e}")
-                    
-                    if self._running:
-                        await asyncio.sleep(5)
         finally:
             await self.stop()
     
