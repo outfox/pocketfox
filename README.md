@@ -174,6 +174,7 @@ Talk to your nanobot through Telegram, Discord, WhatsApp, or Feishu — anytime,
 | **Discord** | Easy (bot token + intents) |
 | **WhatsApp** | Medium (scan QR) |
 | **Feishu** | Medium (app credentials) |
+| **Signal** | Medium (requires signal-cli-rest-api) |
 
 <details>
 <summary><b>Telegram</b> (Recommended)</summary>
@@ -369,6 +370,64 @@ Uses **Stream Mode** — no public IP required.
 ```bash
 nanobot gateway
 ```
+
+</details>
+
+<details>
+<summary><b>Signal</b></summary>
+
+Uses **signal-cli-rest-api** — requires a separate container or service.
+
+**1. Set up signal-cli-rest-api**
+
+Add to your `docker-compose.yml`:
+```yaml
+services:
+  signal:
+    image: bbernhard/signal-cli-rest-api:0.97
+    environment:
+      - MODE=native
+    volumes:
+      - ./signal-data:/home/.local/share/signal-cli
+    ports:
+      - "8080:8080"
+```
+
+**2. Register your phone number**
+
+```bash
+# Request verification code
+curl -X POST "http://localhost:8080/v1/register/+491234567890"
+
+# Verify with the code you receive via SMS
+curl -X POST "http://localhost:8080/v1/register/+491234567890/verify/123456"
+```
+
+**3. Configure**
+
+```json
+{
+  "channels": {
+    "signal": {
+      "enabled": true,
+      "apiUrl": "http://signal:8080",
+      "phoneNumber": "+491234567890",
+      "allowFrom": ["+491111111111", "+492222222222"]
+    }
+  }
+}
+```
+
+> `allowFrom`: List of phone numbers that can message the bot. Leave empty to allow everyone.
+
+**4. Run**
+
+```bash
+nanobot gateway
+```
+
+> [!TIP]
+> Signal gives you a real phone number presence — not a bot account. Great for privacy-focused users!
 
 </details>
 
