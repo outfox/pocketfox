@@ -53,7 +53,8 @@ class SignalChannel(BaseChannel):
     
     async def start(self) -> None:
         """Start the Signal channel by connecting to the REST API WebSocket."""
-        self._session = aiohttp.ClientSession()
+        timeout = aiohttp.ClientTimeout(total=30)
+        self._session = aiohttp.ClientSession(timeout=timeout)
         self._running = True
         
         logger.info(f"Connecting to Signal API at {self._base_url}...")
@@ -220,11 +221,6 @@ class SignalChannel(BaseChannel):
                 content = "[Sticker]"
             else:
                 return
-        
-        # Check allowlist
-        if self.config.allow_from and source not in self.config.allow_from:
-            logger.debug(f"Ignoring Signal message from non-allowed sender: {source}")
-            return
         
         logger.info(f"Signal message from {source_name or source}: {content[:50]}...")
         
