@@ -69,40 +69,44 @@ class SignalChannel(BaseChannel):
             redacted = f"{'*' * (len(redacted) - 4)}{redacted[-4:]}"
         logger.info(f"Using phone number: {redacted}")
         
-        while self._running:
-            try:
-                async with self._session.ws_connect(self._ws_url) as ws:
-                    self._ws = ws
-                    logger.info("Connected to Signal WebSocket")
+        try:
+            while self._running:
+                try:
+                    async with self._session.ws_connect(self._ws_url) as ws:
+                        self._ws = ws
+                        logger.info("Connected to Signal WebSocket")
+                        
+                        async for msg in ws:
+                            if msg.type == aiohttp.WSMsgType.TEXT:
+                                try:
+                                    await self._handle_signal_message(msg.data)
+                                except Exception as e:
+                                    logger.error(f"Error handling Signal message: {e}")
+                            elif msg.type == aiohttp.WSMsgType.ERROR:
+                                logger.error(f"WebSocket error: {ws.exception()}")
+                                break
+                            elif msg.type == aiohttp.WSMsgType.CLOSED:
+                                logger.info("WebSocket closed")
+                                break
+                                
+                except asyncio.CancelledError:
+                    logger.info("Signal channel task cancelled")
+                    raise
+                except aiohttp.ClientError as e:
+                    self._ws = None
+                    logger.warning(f"Signal connection error: {e}")
                     
-                    async for msg in ws:
-                        if msg.type == aiohttp.WSMsgType.TEXT:
-                            try:
-                                await self._handle_signal_message(msg.data)
-                            except Exception as e:
-                                logger.error(f"Error handling Signal message: {e}")
-                        elif msg.type == aiohttp.WSMsgType.ERROR:
-                            logger.error(f"WebSocket error: {ws.exception()}")
-                            break
-                        elif msg.type == aiohttp.WSMsgType.CLOSED:
-                            logger.info("WebSocket closed")
-                            break
-                            
-            except asyncio.CancelledError:
-                break
-            except aiohttp.ClientError as e:
-                self._ws = None
-                logger.warning(f"Signal connection error: {e}")
-                
-                if self._running:
-                    logger.info("Reconnecting in 5 seconds...")
-                    await asyncio.sleep(5)
-            except Exception as e:
-                self._ws = None
-                logger.error(f"Unexpected error in Signal channel: {e}")
-                
-                if self._running:
-                    await asyncio.sleep(5)
+                    if self._running:
+                        logger.info("Reconnecting in 5 seconds...")
+                        await asyncio.sleep(5)
+                except Exception as e:
+                    self._ws = None
+                    logger.error(f"Unexpected error in Signal channel: {e}")
+                    
+                    if self._running:
+                        await asyncio.sleep(5)
+        finally:
+            await self.stop()
     
     async def stop(self) -> None:
         """Stop the Signal channel."""
@@ -123,10 +127,16 @@ class SignalChannel(BaseChannel):
             return
         
         try:
+            # Strip "group." prefix from chat_id for group messages
+            # The v2/send endpoint expects raw group IDs in recipients array
+            recipient = msg.chat_id
+            if recipient.startswith("group."):
+                recipient = recipient[6:]  # Remove "group." prefix
+            
             payload: dict[str, Any] = {
                 "message": msg.content,
                 "number": self.config.phone_number,
-                "recipients": [msg.chat_id]
+                "recipients": [recipient]
             }
             
             # Handle media attachments
