@@ -318,8 +318,13 @@ class TelegramChannel(BaseChannel):
         )
         await update.message.reply_text(help_text, parse_mode="HTML")
     
-    async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle errors with cleaner logging for transient network issues."""
+    async def _on_error(self, _update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle errors with cleaner logging for transient network issues.
+        
+        Args:
+            _update: The update that caused the error (may be None for polling errors).
+            context: The callback context containing the error.
+        """
         error = context.error
         
         # Network errors are expected on flaky connections — log concisely, don't spam stacktrace
@@ -331,8 +336,9 @@ class TelegramChannel(BaseChannel):
             logger.warning(f"Telegram network error: {cause} — retrying")
             return
         
-        # For unexpected errors, log the full context
+        # For unexpected errors, log the full context and re-raise
         logger.error(f"Telegram error: {error}", exc_info=context.error)
+        raise error
     
     async def _on_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle incoming messages (text, photos, voice, documents)."""
