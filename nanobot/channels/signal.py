@@ -27,8 +27,6 @@ class SignalChannel(BaseChannel):
 
     name = "signal"
 
-    POLL_INTERVAL = 1.0  # seconds between polls
-
     def __init__(self, config: SignalConfig, bus: MessageBus):
         super().__init__(config, bus)
         self.config: SignalConfig = config
@@ -83,7 +81,7 @@ class SignalChannel(BaseChannel):
                                 f"Signal receive returned {resp.status}: {text}"
                             )
 
-                    await asyncio.sleep(self.POLL_INTERVAL)
+                    await asyncio.sleep(self.config.poll_interval)
 
                 except asyncio.CancelledError:
                     logger.info("Signal channel task cancelled")
@@ -155,7 +153,7 @@ class SignalChannel(BaseChannel):
             logger.error(f"Error sending Signal message: {e}")
 
     async def _handle_signal_message(self, raw: str) -> None:
-        """Handle a message from the Signal WebSocket."""
+        """Handle a message from the Signal REST API."""
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
