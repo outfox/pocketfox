@@ -51,15 +51,13 @@ class DiscordConfig(BaseModel):
 class SignalConfig(BaseModel):
     """Signal channel configuration using signal-cli-rest-api.
 
-    The signal-cli-rest-api container should run in json-rpc mode for real-time
-    polling. In normal/native mode, each /v1/receive call spawns a new process
-    and contacts the Signal server — use a higher poll_interval (>=5s) there.
+    Connects to signal-cli-rest-api via WebSocket for real-time message reception.
+    See: https://github.com/bbernhard/signal-cli-rest-api
     """
     enabled: bool = False
     api_url: str = "http://signal:8080"  # URL to signal-cli-rest-api
     phone_number: str = ""  # Registered phone number (e.g., "+491234567890")
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
-    poll_interval: float = Field(default=1.0, gt=0)  # Seconds between receive polls (raise for normal/native mode)
 
 
 class ChannelsConfig(BaseModel):
