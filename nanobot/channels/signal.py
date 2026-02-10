@@ -188,6 +188,15 @@ class SignalChannel(BaseChannel):
         # Check for data message (actual text messages)
         data_message = envelope.get("dataMessage", {})
 
+        # Handle commands (Signal doesn't have native bot commands)
+        message_text = data_message.get("message", "")
+        if message_text and message_text.strip().startswith("/"):
+            command = message_text.strip().split()[0].lower()
+            if command == "/reset":
+                await self._handle_reset_command(source, source_name)
+                return
+            # Unknown commands fall through to normal message handling
+
         if not data_message:
             # Could be a sync message, typing indicator, receipt, etc.
             sync_message = envelope.get("syncMessage", {})
@@ -280,6 +289,38 @@ class SignalChannel(BaseChannel):
                 "group_id": group_info.get("groupId") if is_group else None,
             }
         )
+
+    async def _handle_reset_command(self, sender: str, sender_name: str) -> None:
+        """Handle /reset command — clear conversation history.
+
+        Args:
+            sender: The phone number of the sender.
+            sender_name: The display name of the sender.
+        """
+        chat_id = sender  # For DMs, chat_id is the sender's number
+        session_key = f"{self.name}:{chat_id}"
+
+        if self.session_manager is None:
+            logger.warning("/reset called but session_manager is not available")
+            await self.send(OutboundMessage(
+                channel=self.name,
+                chat_id=chat_id,
+                content="⚠️ Session management is not available."
+            ))
+            return
+
+        session = self.session_manager.get_or_create(session_key)
+        msg_count = len(session.messages)
+        session.clear()
+        self.session_manager.save(session)
+
+        display_name = sender_name or sender
+        logger.info(f"Session reset for {session_key} (cleared {msg_count} messages)")
+        await self.send(OutboundMessage(
+            channel=self.name,
+            chat_id=chat_id,
+            content="🔄 Conversation history cleared. Let's start fresh!"
+        ))
 
     async def _download_attachment(
         self, att_id: str, content_type: str, filename: str
