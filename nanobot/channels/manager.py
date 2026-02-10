@@ -101,7 +101,10 @@ class ChannelManager:
             try:
                 from nanobot.channels.signal import SignalChannel
                 self.channels["signal"] = SignalChannel(
-                    self.config.channels.signal, self.bus
+                    self.config.channels.signal,
+                    self.bus,
+                    groq_api_key=self.config.providers.groq.api_key,
+                    session_manager=self.session_manager,
                 )
                 logger.info("Signal channel enabled")
             except ImportError as e:
