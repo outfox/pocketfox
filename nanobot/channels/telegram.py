@@ -337,7 +337,7 @@ class TelegramChannel(BaseChannel):
             return
         
         # For unexpected errors, log the full context and re-raise
-        logger.error(f"Telegram error: {error}", exc_info=context.error)
+        logger.opt(exception=context.error).error(f"Telegram error: {error}")
         raise error
     
     async def _on_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
