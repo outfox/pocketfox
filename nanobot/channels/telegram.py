@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from telegram import BotCommand, Update
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from nanobot.bus.events import OutboundMessage
@@ -140,6 +141,9 @@ class TelegramChannel(BaseChannel):
                 self._on_message
             )
         )
+        
+        # Add error handler for cleaner network error logging
+        self._app.add_error_handler(self._on_error)
         
         logger.info("Starting Telegram bot (polling mode)...")
         
@@ -313,6 +317,22 @@ class TelegramChannel(BaseChannel):
             "Just send me a text message to chat!"
         )
         await update.message.reply_text(help_text, parse_mode="HTML")
+    
+    async def _on_error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle errors with cleaner logging for transient network issues."""
+        error = context.error
+        
+        # Network errors are expected on flaky connections — log concisely, don't spam stacktrace
+        if isinstance(error, (NetworkError, TimedOut)):
+            # Extract the root cause message
+            cause = str(error)
+            if error.__cause__:
+                cause = f"{type(error.__cause__).__name__}: {error.__cause__}"
+            logger.warning(f"Telegram network error: {cause} — retrying")
+            return
+        
+        # For unexpected errors, log the full context
+        logger.error(f"Telegram error: {error}", exc_info=context.error)
     
     async def _on_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle incoming messages (text, photos, voice, documents)."""
