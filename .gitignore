@@ -1,4 +1,6 @@
 .assets
+uv.lock
+.idea
 .env
 *.pyc
 dist/
