@@ -1,10 +1,12 @@
 """Signal channel implementation using signal-cli-rest-api."""
 
+from __future__ import annotations
+
 import asyncio
 import base64
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 import aiohttp
@@ -14,6 +16,9 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel
 from nanobot.config.schema import SignalConfig
+
+if TYPE_CHECKING:
+    from nanobot.session.manager import SessionManager
 
 
 class SignalChannel(BaseChannel):
@@ -27,9 +32,17 @@ class SignalChannel(BaseChannel):
 
     name = "signal"
 
-    def __init__(self, config: SignalConfig, bus: MessageBus):
+    def __init__(
+        self,
+        config: SignalConfig,
+        bus: MessageBus,
+        groq_api_key: str = "",
+        session_manager: SessionManager | None = None,
+    ):
         super().__init__(config, bus)
         self.config: SignalConfig = config
+        self.groq_api_key = groq_api_key
+        self.session_manager = session_manager
         self._session: aiohttp.ClientSession | None = None
 
     @property
@@ -175,6 +188,15 @@ class SignalChannel(BaseChannel):
         # Check for data message (actual text messages)
         data_message = envelope.get("dataMessage", {})
 
+        # Handle commands (Signal doesn't have native bot commands)
+        message_text = data_message.get("message", "")
+        if message_text and message_text.strip().startswith("/"):
+            command = message_text.strip().split()[0].lower()
+            if command == "/reset":
+                await self._handle_reset_command(source, source_name)
+                return
+            # Unknown commands fall through to normal message handling
+
         if not data_message:
             # Could be a sync message, typing indicator, receipt, etc.
             sync_message = envelope.get("syncMessage", {})
@@ -200,20 +222,43 @@ class SignalChannel(BaseChannel):
         else:
             chat_id = source
 
-        # Handle attachments
+        # Handle attachments - download them!
         attachments = data_message.get("attachments", [])
-        media_urls = []
+        media_paths = []
+        content_parts = [content] if content else []
 
         for att in attachments:
-            # signal-cli-rest-api provides attachment info
             att_id = att.get("id", "")
+            content_type = att.get("contentType", "")
+            filename = att.get("filename", "")
 
             if att_id:
-                # Could download via /v1/attachments/<id> endpoint
-                media_urls.append(f"{self._base_url}/v1/attachments/{att_id}")
+                # Download the attachment
+                downloaded_path = await self._download_attachment(
+                    att_id, content_type, filename
+                )
+                if downloaded_path:
+                    media_paths.append(downloaded_path)
+
+                    # Transcribe voice/audio
+                    if content_type.startswith("audio/"):
+                        transcription = await self._transcribe_audio(downloaded_path)
+                        if transcription:
+                            content_parts.append(f"[transcription: {transcription}]")
+                        else:
+                            content_parts.append(f"[voice: {downloaded_path}]")
+                    elif content_type.startswith("image/"):
+                        content_parts.append(f"[image: {downloaded_path}]")
+                    elif content_type.startswith("video/"):
+                        content_parts.append(f"[video: {downloaded_path}]")
+                    else:
+                        content_parts.append(f"[file: {downloaded_path}]")
+
+        # Rebuild content with attachment info
+        content = "\n".join(content_parts) if content_parts else ""
 
         # Skip empty messages (could be just an attachment or reaction)
-        if not content and not media_urls:
+        if not content and not media_paths:
             # Check for reaction
             reaction = data_message.get("reaction", {})
             if reaction:
@@ -236,7 +281,7 @@ class SignalChannel(BaseChannel):
             sender_id=source,
             chat_id=chat_id,
             content=content,
-            media=media_urls if media_urls else None,
+            media=media_paths if media_paths else None,
             metadata={
                 "timestamp": timestamp,
                 "source_name": source_name,
@@ -244,3 +289,130 @@ class SignalChannel(BaseChannel):
                 "group_id": group_info.get("groupId") if is_group else None,
             }
         )
+
+    async def _handle_reset_command(self, sender: str, sender_name: str) -> None:
+        """Handle /reset command — clear conversation history.
+
+        Args:
+            sender: The phone number of the sender.
+            sender_name: The display name of the sender.
+        """
+        chat_id = sender  # For DMs, chat_id is the sender's number
+        session_key = f"{self.name}:{chat_id}"
+
+        if self.session_manager is None:
+            logger.warning("/reset called but session_manager is not available")
+            await self.send(OutboundMessage(
+                channel=self.name,
+                chat_id=chat_id,
+                content="⚠️ Session management is not available."
+            ))
+            return
+
+        session = self.session_manager.get_or_create(session_key)
+        msg_count = len(session.messages)
+        session.clear()
+        self.session_manager.save(session)
+
+        display_name = sender_name or sender
+        logger.info(f"Session reset for {session_key} (cleared {msg_count} messages)")
+        await self.send(OutboundMessage(
+            channel=self.name,
+            chat_id=chat_id,
+            content="🔄 Conversation history cleared. Let's start fresh!"
+        ))
+
+    async def _download_attachment(
+        self, att_id: str, content_type: str, filename: str
+    ) -> str | None:
+        """Download an attachment from signal-cli-rest-api.
+
+        Args:
+            att_id: The attachment ID from signal-cli.
+            content_type: MIME type of the attachment.
+            filename: Original filename (may be empty).
+
+        Returns:
+            Path to the downloaded file, or None on failure.
+        """
+        if not self._session:
+            return None
+
+        # Determine file extension
+        ext = self._get_extension(content_type, filename)
+
+        # Create media directory
+        media_dir = Path.home() / ".nanobot" / "media" / "signal"
+        media_dir.mkdir(parents=True, exist_ok=True)
+
+        # Use attachment ID as filename (truncated for sanity)
+        safe_id = att_id.replace("/", "_").replace("\\", "_")[:32]
+        file_path = media_dir / f"{safe_id}{ext}"
+
+        try:
+            url = f"{self._base_url}/v1/attachments/{att_id}"
+            async with self._session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.read()
+                    file_path.write_bytes(data)
+                    logger.debug(f"Downloaded Signal attachment to {file_path}")
+                    return str(file_path)
+                else:
+                    text = await resp.text()
+                    logger.error(
+                        f"Failed to download attachment {att_id}: {resp.status} - {text}"
+                    )
+                    return None
+        except Exception as e:
+            logger.error(f"Error downloading Signal attachment: {e}")
+            return None
+
+    def _get_extension(self, content_type: str, filename: str) -> str:
+        """Get file extension from content type or filename."""
+        # Try to get from filename first
+        if filename:
+            path = Path(filename)
+            if path.suffix:
+                return path.suffix.lower()
+
+        # Map common MIME types to extensions
+        mime_map = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/gif": ".gif",
+            "image/webp": ".webp",
+            "audio/ogg": ".ogg",
+            "audio/mpeg": ".mp3",
+            "audio/mp4": ".m4a",
+            "audio/aac": ".aac",
+            "video/mp4": ".mp4",
+            "video/webm": ".webm",
+            "application/pdf": ".pdf",
+        }
+
+        return mime_map.get(content_type, "")
+
+    async def _transcribe_audio(self, file_path: str) -> str:
+        """Transcribe an audio file using Groq.
+
+        Args:
+            file_path: Path to the audio file.
+
+        Returns:
+            Transcribed text, or empty string on failure.
+        """
+        if not self.groq_api_key:
+            logger.debug("Groq API key not configured, skipping transcription")
+            return ""
+
+        try:
+            from nanobot.providers.transcription import GroqTranscriptionProvider
+
+            transcriber = GroqTranscriptionProvider(api_key=self.groq_api_key)
+            transcription = await transcriber.transcribe(file_path)
+            if transcription:
+                logger.info(f"Transcribed Signal voice: {transcription[:50]}...")
+            return transcription
+        except Exception as e:
+            logger.error(f"Signal transcription error: {e}")
+            return ""
