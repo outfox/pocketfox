@@ -59,7 +59,7 @@ class SignalConfig(BaseModel):
     api_url: str = "http://signal:8080"  # URL to signal-cli-rest-api
     phone_number: str = ""  # Registered phone number (e.g., "+491234567890")
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
-    poll_interval: float = 1.0  # Seconds between receive polls (raise for normal/native mode)
+    poll_interval: float = Field(default=1.0, gt=0)  # Seconds between receive polls (raise for normal/native mode)
 
 
 class ChannelsConfig(BaseModel):
