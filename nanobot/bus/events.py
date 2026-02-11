@@ -32,6 +32,7 @@ class OutboundMessage:
     content: str
     reply_to: str | None = None
     media: list[str] = field(default_factory=list)
+    voice: list[str] = field(default_factory=list)  # Audio files to send as voice messages
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

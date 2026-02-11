@@ -199,7 +199,11 @@ class TelegramChannel(BaseChannel):
             # chat_id should be the Telegram chat ID (integer)
             chat_id = int(msg.chat_id)
             
-            # Send media files first (if any)
+            # Send voice messages first (if any)
+            for voice_path in msg.voice:
+                await self._send_voice(chat_id, voice_path)
+            
+            # Send media files (if any)
             for media_path in msg.media:
                 await self._send_media(chat_id, media_path)
             
@@ -224,6 +228,70 @@ class TelegramChannel(BaseChannel):
                 )
             except Exception as e2:
                 logger.error(f"Error sending Telegram message: {e2}")
+    
+    async def _send_voice(self, chat_id: int, audio_path: str) -> None:
+        """Send an audio file as a Telegram voice message.
+        
+        Converts the audio to OGG with OPUS codec (required by Telegram for voice messages).
+        Supports common audio formats: mp3, wav, m4a, flac, ogg, etc.
+        
+        Args:
+            chat_id: Telegram chat ID to send to.
+            audio_path: Path to the audio file to send.
+        """
+        if not self._app:
+            return
+        
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        
+        path = Path(audio_path)
+        
+        if not path.exists():
+            logger.error(f"Voice file not found: {audio_path}")
+            return
+        
+        try:
+            # Create temp file for converted audio
+            with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as tmp:
+                ogg_path = Path(tmp.name)
+            
+            # Convert to OGG/OPUS using ffmpeg
+            # -ac 1: mono (voice messages are typically mono)
+            # -ar 48000: 48kHz sample rate (OPUS standard)
+            # -b:a 64k: 64kbps bitrate (good quality for voice)
+            result = subprocess.run(
+                [
+                    'ffmpeg', '-y', '-i', str(path),
+                    '-c:a', 'libopus',
+                    '-ac', '1',
+                    '-ar', '48000',
+                    '-b:a', '64k',
+                    str(ogg_path)
+                ],
+                capture_output=True,
+                timeout=30
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"ffmpeg conversion failed: {result.stderr.decode()}")
+                return
+            
+            # Send as voice message
+            with open(ogg_path, 'rb') as f:
+                await self._app.bot.send_voice(chat_id=chat_id, voice=f)
+            
+            logger.debug(f"Sent voice message: {audio_path}")
+            
+        except subprocess.TimeoutExpired:
+            logger.error(f"Voice conversion timed out for {audio_path}")
+        except Exception as e:
+            logger.error(f"Failed to send voice {audio_path}: {e}")
+        finally:
+            # Clean up temp file
+            if 'ogg_path' in locals() and ogg_path.exists():
+                ogg_path.unlink()
     
     async def _send_media(self, chat_id: int, media_path: str) -> None:
         """Send a media file to a chat.

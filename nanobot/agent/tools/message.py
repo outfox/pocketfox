@@ -56,7 +56,12 @@ class MessageTool(Tool):
                 "media": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional: list of file paths to send as media (images, audio, voice)"
+                    "description": "Optional: list of file paths to send as media (images, audio, documents)"
+                },
+                "voice": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Optional: list of audio file paths to send as voice messages (will be converted to OGG/OPUS)"
                 }
             },
             "required": ["content"]
@@ -68,6 +73,7 @@ class MessageTool(Tool):
         channel: str | None = None, 
         chat_id: str | None = None,
         media: list[str] | None = None,
+        voice: list[str] | None = None,
         **kwargs: Any
     ) -> str:
         channel = channel or self._default_channel
@@ -83,12 +89,18 @@ class MessageTool(Tool):
             channel=channel,
             chat_id=chat_id,
             content=content,
-            media=media or []
+            media=media or [],
+            voice=voice or []
         )
         
         try:
             await self._send_callback(msg)
-            media_info = f" with {len(media)} media files" if media else ""
-            return f"Message sent to {channel}:{chat_id}{media_info}"
+            attachments = []
+            if media:
+                attachments.append(f"{len(media)} media")
+            if voice:
+                attachments.append(f"{len(voice)} voice")
+            attachment_info = f" with {', '.join(attachments)}" if attachments else ""
+            return f"Message sent to {channel}:{chat_id}{attachment_info}"
         except Exception as e:
             return f"Error sending message: {str(e)}"
