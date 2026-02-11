@@ -757,6 +757,28 @@ def cron_run(
 # ============================================================================
 
 
+# ============================================================================
+# REPL Command
+# ============================================================================
+
+
+@app.command()
+def repl(
+    ipython: bool = typer.Option(False, "--ipython", "-i", help="Use IPython if available"),
+    workspace: str = typer.Option(None, "--workspace", "-w", help="Override workspace path"),
+):
+    """Start a Python REPL with nanobot internals pre-loaded."""
+    from nanobot.cli.repl import start_repl
+    
+    ws_path = Path(workspace) if workspace else None
+    start_repl(use_ipython=ipython, workspace=ws_path)
+
+
+# ============================================================================
+# Status Commands
+# ============================================================================
+
+
 @app.command()
 def status():
     """Show nanobot status."""
