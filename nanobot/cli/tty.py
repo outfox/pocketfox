@@ -58,15 +58,16 @@ class TTYAgent:
         if self._provider is None:
             from nanobot.providers.litellm_provider import LiteLLMProvider
             cfg = self.config
-            p = cfg.get_provider(self.model)
-            if not (p and p.api_key) and not cfg.agents.defaults.model.startswith("bedrock/"):
+            effective_model = self.model or cfg.agents.defaults.model
+            p = cfg.get_provider(effective_model)
+            if not (p and p.api_key) and not effective_model.startswith("bedrock/"):
                 raise RuntimeError("No API key configured")
             self._provider = LiteLLMProvider(
                 api_key=p.api_key if p else None,
-                api_base=cfg.get_api_base(self.model),
-                default_model=self.model or cfg.agents.defaults.model,
+                api_base=cfg.get_api_base(effective_model),
+                default_model=effective_model,
                 extra_headers=p.extra_headers if p else None,
-                provider_name=cfg.get_provider_name(self.model),
+                provider_name=cfg.get_provider_name(effective_model),
             )
         return self._provider
     
