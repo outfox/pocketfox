@@ -1,3 +1,8 @@
+# Build gog CLI from source
+FROM golang:1.21-bookworm AS gog-builder
+RUN git clone https://github.com/steipete/gogcli.git /gogcli && \
+    cd /gogcli && make
+
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 # Install Node.js 20 for the WhatsApp bridge
@@ -11,6 +16,9 @@ RUN apt-get update && \
     apt-get purge -y gnupg && \
     apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
+
+# Copy gog binary from builder
+COPY --from=gog-builder /gogcli/gog /usr/local/bin/gog
 
 WORKDIR /app
 
