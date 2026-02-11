@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from loguru import logger
 from rich.console import Console
 
 console = Console()
@@ -69,7 +70,7 @@ class NanobotNamespace:
             self._tools.register(EditFileTool())
             self._tools.register(ListDirTool())
             self._tools.register(ExecTool(working_dir=str(self.workspace)))
-            self._tools.register(WebSearchTool())
+            self._tools.register(WebSearchTool(api_key=self.config.tools.web.search.api_key))
             self._tools.register(WebFetchTool())
         return self._tools
     
@@ -109,8 +110,8 @@ class NanobotNamespace:
             try:
                 importlib.reload(sys.modules[name])
                 reloaded += 1
-            except Exception as e:
-                console.print(f"[yellow]Could not reload {name}: {e}[/yellow]")
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Could not reload {}: {}", name, e)
         
         # Reset cached instances
         self._agent = None

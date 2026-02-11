@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Callable
 
+from loguru import logger
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
@@ -57,15 +58,15 @@ class TTYAgent:
         if self._provider is None:
             from nanobot.providers.litellm_provider import LiteLLMProvider
             cfg = self.config
-            p = cfg.get_provider()
+            p = cfg.get_provider(self.model)
             if not (p and p.api_key) and not cfg.agents.defaults.model.startswith("bedrock/"):
                 raise RuntimeError("No API key configured")
             self._provider = LiteLLMProvider(
                 api_key=p.api_key if p else None,
-                api_base=cfg.get_api_base(),
+                api_base=cfg.get_api_base(self.model),
                 default_model=self.model or cfg.agents.defaults.model,
                 extra_headers=p.extra_headers if p else None,
-                provider_name=cfg.get_provider_name(),
+                provider_name=cfg.get_provider_name(self.model),
             )
         return self._provider
     
@@ -312,8 +313,8 @@ def start_tty(
         
         try:
             readline.read_history_file(str(_history_file))
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not read history file: {}", _history_file)
     except ImportError:
         pass
     
@@ -321,8 +322,8 @@ def start_tty(
         if _readline:
             try:
                 _readline.write_history_file(str(_history_file))
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001
+                logger.debug("Could not save history file: {}", _history_file)
     
     atexit.register(save_history)
     
@@ -371,8 +372,8 @@ def start_tty(
                     break
                 if not os.read(fd, 4096):
                     break
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not flush stdin")
     
     # Main loop
     async def run_loop():
