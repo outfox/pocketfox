@@ -757,6 +757,62 @@ def cron_run(
 # ============================================================================
 
 
+# ============================================================================
+# REPL Command
+# ============================================================================
+
+
+@app.command()
+def repl(
+    ipython: bool = typer.Option(False, "--ipython", "-i", help="Use IPython if available"),
+    workspace: str = typer.Option(None, "--workspace", "-w", help="Override workspace path"),
+):
+    """Start a Python REPL with nanobot internals pre-loaded."""
+    from nanobot.cli.repl import start_repl
+    
+    ws_path = Path(workspace) if workspace else None
+    start_repl(use_ipython=ipython, workspace=ws_path)
+
+
+@app.command()
+def tty(
+    verbose: bool = typer.Option(True, "--verbose/--quiet", "-v/-q", help="Show tool calls"),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Don't execute tools"),
+    breakpoints: bool = typer.Option(False, "--breakpoints", "-b", help="Pause before tools"),
+    model: str = typer.Option(None, "--model", "-m", help="Override model"),
+    workspace: str = typer.Option(None, "--workspace", "-w", help="Override workspace path"),
+):
+    """Interactive TTY for development and debugging.
+    
+    Features:
+    - Verbose mode shows tool calls and results
+    - Dry-run mode simulates without executing
+    - Breakpoints pause before each tool call
+    
+    Commands in TTY:
+    - /reset     Clear conversation history
+    - /verbose   Toggle verbose mode
+    - /dry-run   Toggle dry-run mode  
+    - /breakpoints  Toggle breakpoints
+    - /quit      Exit
+    """
+    from nanobot.cli.tty import start_tty
+    
+    ws_path = Path(workspace) if workspace else None
+    start_tty(
+        workspace=ws_path,
+        model=model,
+        verbose=verbose,
+        dry_run=dry_run,
+        breakpoints=breakpoints,
+    )
+
+
+# ============================================================================
+# Status Commands
+# ============================================================================
+
+
 @app.command()
 def status():
     """Show nanobot status."""
