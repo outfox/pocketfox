@@ -1,5 +1,6 @@
 """Message tool for sending messages to users."""
 
+import re
 from typing import Any, Callable, Awaitable
 
 from nanobot.agent.tools.base import Tool
@@ -107,3 +108,12 @@ class MessageTool(Tool):
             return f"Error: Failed to send message - {str(e)}"
         except Exception as e:
             return f"Error sending message: {str(e)}"
+    
+    def redact_params(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Redact phone numbers in chat_id for logging."""
+        result = params.copy()
+        chat_id = result.get("chat_id", "")
+        # Redact phone numbers (start with + followed by digits)
+        if chat_id and re.match(r"^\+\d", chat_id):
+            result["chat_id"] = "+***"
+        return result

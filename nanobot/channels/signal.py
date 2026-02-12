@@ -16,6 +16,7 @@ from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.channels.base import BaseChannel, SendError
 from nanobot.config.schema import SignalConfig
+from nanobot.utils.helpers import redact_phone_number
 
 if TYPE_CHECKING:
     from nanobot.session.manager import SessionManager
@@ -69,11 +70,7 @@ class SignalChannel(BaseChannel):
         self._running = True
 
         logger.info(f"Connecting to Signal API at {self._base_url}...")
-        # Redact phone number for privacy (show only last 4 digits)
-        redacted = self.config.phone_number
-        if len(redacted) > 4:
-            redacted = f"{'*' * (len(redacted) - 4)}{redacted[-4:]}"
-        logger.info(f"Using phone number: {redacted}")
+        logger.info(f"Using phone number: {redact_phone_number(self.config.phone_number)}")
 
         try:
             while self._running:
@@ -167,7 +164,7 @@ class SignalChannel(BaseChannel):
                     logger.error(f"Failed to send Signal message: {resp.status} - {text}")
                     raise SendError(f"Signal API error {resp.status}: {text}")
                 else:
-                    logger.debug(f"Signal message sent to {msg.chat_id}")
+                    logger.debug(f"Signal message sent to {redact_phone_number(msg.chat_id)}")
         except SendError:
             raise  # Re-raise our own errors
         except aiohttp.ClientError as e:
@@ -275,7 +272,7 @@ class SignalChannel(BaseChannel):
             if reaction:
                 emoji = reaction.get("emoji", "")
                 target_author = reaction.get("targetAuthor", "")
-                logger.debug(f"Signal reaction: {emoji} from {source} on message from {target_author}")
+                logger.debug(f"Signal reaction: {emoji} from {redact_phone_number(source)} on message from {redact_phone_number(target_author)}")
                 return
 
             # Check for sticker
@@ -285,7 +282,7 @@ class SignalChannel(BaseChannel):
             else:
                 return
 
-        logger.info(f"Signal message from {source_name or source}")
+        logger.info(f"Signal message from {source_name or redact_phone_number(source)}")
         logger.debug(f"Signal message preview: {content[:50]}...")
 
         await self._handle_message(
@@ -326,7 +323,8 @@ class SignalChannel(BaseChannel):
         self.session_manager.save(session)
 
         display_name = sender_name or sender
-        logger.info(f"Session reset for {session_key} (cleared {msg_count} messages)")
+        redacted_key = f"{self.name}:{redact_phone_number(chat_id)}"
+        logger.info(f"Session reset for {redacted_key} (cleared {msg_count} messages)")
         await self.send(OutboundMessage(
             channel=self.name,
             chat_id=chat_id,
