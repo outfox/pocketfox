@@ -4,9 +4,9 @@ This file documents which Docker secrets are available to you.
 
 ## Security Rules
 
-1. **NEVER read secret files directly** — don't `cat` them to see the content
+1. **NEVER output secret files to terminal** — don't `cat` them to view contents
 2. **NEVER pass secrets as command arguments** — they'll appear in logs
-3. **ALWAYS pipe secrets** — use `cat /run/secrets/<name> | command`
+3. **ALWAYS pipe secrets to stdin** — use `cat /run/secrets/<name> | command` (safe because the secret goes directly to the command's stdin, never to terminal or logs)
 
 ## Available Secrets
 
