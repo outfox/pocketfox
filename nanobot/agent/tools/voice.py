@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import time
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 from loguru import logger
 
@@ -20,50 +20,61 @@ class VoiceTool(Tool):
     and better control over TTS generation.
     """
     
-    name = "voice"
-    description = (
-        "Generate voice audio from text using ElevenLabs TTS. "
-        "The eleven_v3 model supports direction tags like [excited], [whispers], [pause], etc. "
-        "Returns the path to the generated audio file."
-    )
-    parameters: ClassVar[dict[str, Any]] = {
-        "type": "object",
-        "properties": {
-            "text": {
-                "type": "string",
-                "description": "Text to convert to speech. Can include ElevenLabs v3 direction tags."
+    @property
+    def name(self) -> str:
+        """Tool name used in function calls."""
+        return "voice"
+    
+    @property
+    def description(self) -> str:
+        """Description of what the tool does."""
+        return (
+            "Generate voice audio from text using ElevenLabs TTS. "
+            "The eleven_v3 model supports direction tags like [excited], [whispers], [pause], etc. "
+            "Returns the path to the generated audio file."
+        )
+    
+    @property
+    def parameters(self) -> dict[str, Any]:
+        """JSON Schema for tool parameters."""
+        return {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string",
+                    "description": "Text to convert to speech. Can include ElevenLabs v3 direction tags."
+                },
+                "output_path": {
+                    "type": "string",
+                    "description": "Optional output path for the audio file. If not provided, generates a unique file in workspace."
+                },
+                "voice_id": {
+                    "type": "string",
+                    "description": "ElevenLabs voice ID. If not specified, uses the default from config (tools.voice.default_voice_id)."
+                },
+                "stability": {
+                    "type": "number",
+                    "description": "Voice stability (0.0=creative, 0.5=natural, 1.0=robust). Default: 0.0",
+                    "minimum": 0.0,
+                    "maximum": 1.0
+                },
+                "speed": {
+                    "type": "number",
+                    "description": "Speech speed multiplier (0.5=slow, 1.0=normal, 2.0=fast). Default: 1.0",
+                    "minimum": 0.5,
+                    "maximum": 2.0
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Optional title for audio metadata."
+                },
+                "artist": {
+                    "type": "string",
+                    "description": "Optional artist for audio metadata. Default: 'Blue Duval'"
+                }
             },
-            "output_path": {
-                "type": "string",
-                "description": "Optional output path for the audio file. If not provided, generates a unique file in workspace."
-            },
-            "voice_id": {
-                "type": "string",
-                "description": "ElevenLabs voice ID. If not specified, uses the default from config (tools.voice.default_voice_id)."
-            },
-            "stability": {
-                "type": "number",
-                "description": "Voice stability (0.0=creative, 0.5=natural, 1.0=robust). Default: 0.0",
-                "minimum": 0.0,
-                "maximum": 1.0
-            },
-            "speed": {
-                "type": "number",
-                "description": "Speech speed multiplier (0.5=slow, 1.0=normal, 2.0=fast). Default: 1.0",
-                "minimum": 0.5,
-                "maximum": 2.0
-            },
-            "title": {
-                "type": "string",
-                "description": "Optional title for audio metadata."
-            },
-            "artist": {
-                "type": "string",
-                "description": "Optional artist for audio metadata. Default: 'Blue Duval'"
-            }
-        },
-        "required": ["text"]
-    }
+            "required": ["text"]
+        }
     
     def __init__(
         self,
@@ -103,31 +114,34 @@ class VoiceTool(Tool):
                 ) from None
         return self._client
     
-    async def execute(
-        self,
-        text: str,
-        output_path: str | None = None,
-        voice_id: str | None = None,
-        stability: float | None = None,
-        speed: float | None = None,
-        title: str | None = None,
-        artist: str | None = None,
-        **_kwargs: Any,  # Accept extra params for Tool interface compatibility
-    ) -> str:
+    async def execute(self, **kwargs: Any) -> str:
         """Generate voice audio from text.
         
         Args:
-            text: Text to convert to speech.
-            output_path: Optional output path for the audio file.
-            voice_id: ElevenLabs voice ID.
-            stability: Voice stability setting (0.0-1.0).
-            speed: Speech speed multiplier (0.5-2.0).
-            title: Optional title for metadata.
-            artist: Optional artist for metadata.
+            **kwargs: Tool parameters:
+                text: Text to convert to speech (required).
+                output_path: Optional output path for the audio file.
+                voice_id: ElevenLabs voice ID.
+                stability: Voice stability setting (0.0-1.0).
+                speed: Speech speed multiplier (0.5-2.0).
+                title: Optional title for metadata.
+                artist: Optional artist for metadata.
         
         Returns:
             Path to the generated audio file, or error message.
+        
+        Raises:
+            ValueError: If required 'text' parameter is missing.
         """
+        # Extract parameters
+        text: str = kwargs.get("text", "")
+        output_path: str | None = kwargs.get("output_path")
+        voice_id: str | None = kwargs.get("voice_id")
+        stability: float | None = kwargs.get("stability")
+        speed: float | None = kwargs.get("speed")
+        title: str | None = kwargs.get("title")
+        artist: str | None = kwargs.get("artist")
+        
         if not self.api_key:
             return "Error: ElevenLabs API key not configured. Set tools.voice.apiKey in config."
         
