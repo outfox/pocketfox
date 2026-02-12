@@ -1,11 +1,12 @@
 """Configuration loading utilities."""
 
-import json
+import os
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import tomli_w
+from loguru import logger
 
 from nanobot.config.schema import Config
 
@@ -24,10 +25,7 @@ def get_data_dir() -> Path:
 
 def load_config(config_path: Path | None = None) -> Config:
     """
-    Load configuration from file or create default.
-
-    Checks for config.toml first (snake_case keys, no conversion needed),
-    then falls back to config.json (camelCase keys, converted to snake_case).
+    Load configuration from TOML file or create default.
 
     Args:
         config_path: Optional path to config file. Uses default if not provided.
@@ -39,36 +37,26 @@ def load_config(config_path: Path | None = None) -> Config:
         return _load_from_path(config_path)
 
     toml_path = Path.home() / ".nanobot" / "config.toml"
-    json_path = Path.home() / ".nanobot" / "config.json"
 
-    # TOML takes precedence
     if toml_path.exists():
         return _load_from_path(toml_path)
-
-    # Fall back to legacy JSON
-    if json_path.exists():
-        return _load_from_path(json_path)
 
     return Config()
 
 
 def _load_from_path(path: Path) -> Config:
-    """Load config from a specific file path."""
+    """Load config from a TOML file path."""
     try:
-        if path.suffix == ".toml":
-            with open(path, "rb") as f:
-                data = tomllib.load(f)
-            data = _migrate_config(data)
-            return Config.model_validate(data)
-        else:
-            with open(path) as f:
-                data = json.load(f)
-            data = _migrate_config(data)
-            return Config.model_validate(convert_keys(data))
-    except (tomllib.TOMLDecodeError, json.JSONDecodeError, ValueError) as e:
-        print(f"Warning: Failed to load config from {path}: {e}")
-        print("Using default configuration.")
-        return Config()
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        data = _migrate_config(data)
+        return Config.model_validate(data)
+    except OSError as e:
+        logger.warning("Failed to load config from {}: {}", path, e)
+        raise
+    except (tomllib.TOMLDecodeError, ValueError) as e:
+        logger.warning("Failed to load config from {}: {}", path, e)
+        raise
 
 
 def save_config(config: Config, config_path: Path | None = None) -> None:
@@ -87,6 +75,7 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
 
     with open(path, "wb") as f:
         tomli_w.dump(data, f)
+    os.chmod(path, 0o600)
 
 
 def _migrate_config(data: dict) -> dict:
@@ -111,20 +100,3 @@ def _strip_none(data: Any) -> Any:
     return data
 
 
-def convert_keys(data: Any) -> Any:
-    """Convert camelCase keys to snake_case for Pydantic (legacy JSON support)."""
-    if isinstance(data, dict):
-        return {camel_to_snake(k): convert_keys(v) for k, v in data.items()}
-    if isinstance(data, list):
-        return [convert_keys(item) for item in data]
-    return data
-
-
-def camel_to_snake(name: str) -> str:
-    """Convert camelCase to snake_case."""
-    result = []
-    for i, char in enumerate(name):
-        if char.isupper() and i > 0:
-            result.append("_")
-        result.append(char.lower())
-    return "".join(result)
