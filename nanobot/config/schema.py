@@ -128,10 +128,18 @@ class ExecToolConfig(BaseModel):
     timeout: int = 60
 
 
+class VoiceToolConfig(BaseModel):
+    """Voice/TTS tool configuration using ElevenLabs."""
+    api_key: str = ""  # ElevenLabs API key
+    default_voice_id: str = "5kN3CFEeRreSoAQlWcb9"  # Julia voice
+    default_stability: float = 0.0  # 0.0=creative, 0.5=natural, 1.0=robust
+
+
 class ToolsConfig(BaseModel):
     """Tools configuration."""
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
+    voice: VoiceToolConfig = Field(default_factory=VoiceToolConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
 
 
