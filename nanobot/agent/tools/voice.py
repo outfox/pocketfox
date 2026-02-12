@@ -4,6 +4,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -126,7 +127,6 @@ class VoiceTool(Tool):
             voice_dir.mkdir(parents=True, exist_ok=True)
             
             # Create unique filename
-            import time
             timestamp = int(time.time())
             final_path = voice_dir / f"voice_{timestamp}.mp3"
         
@@ -154,7 +154,7 @@ class VoiceTool(Tool):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await proc.communicate()
+            _stdout, stderr = await proc.communicate()
             
             if proc.returncode != 0:
                 error = stderr.decode() if stderr else "Unknown error"
