@@ -238,32 +238,34 @@ class TelegramChannel(BaseChannel):
     
     async def _send_voice(self, chat_id: int, audio_path: str) -> None:
         """Send an audio file as a Telegram voice message.
-        
+
         Converts the audio to OGG with OPUS codec (required by Telegram for voice messages).
         Supports common audio formats: mp3, wav, m4a, flac, ogg, etc.
-        
+
         Args:
             chat_id: Telegram chat ID to send to.
             audio_path: Path to the audio file to send.
+
+        Raises:
+            SendError: If the voice message could not be sent.
         """
         if not self._app:
-            return
-        
+            raise SendError("Telegram bot not running")
+
         import subprocess
         import tempfile
         from pathlib import Path
-        
+
         path = Path(audio_path)
-        
+
         if not path.exists():
-            logger.error(f"Voice file not found: {audio_path}")
-            return
-        
+            raise SendError(f"Voice file not found: {audio_path}")
+
         try:
             # Create temp file for converted audio
             with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as tmp:
                 ogg_path = Path(tmp.name)
-            
+
             # Convert to OGG/OPUS using ffmpeg
             # -ac 1: mono (voice messages are typically mono)
             # -ar 48000: 48kHz sample rate (OPUS standard)
@@ -280,21 +282,22 @@ class TelegramChannel(BaseChannel):
                 capture_output=True,
                 timeout=30
             )
-            
+
             if result.returncode != 0:
-                logger.error(f"ffmpeg conversion failed: {result.stderr.decode()}")
-                return
-            
+                raise SendError(f"ffmpeg conversion failed: {result.stderr.decode()}")
+
             # Send as voice message
             with open(ogg_path, 'rb') as f:
                 await self._app.bot.send_voice(chat_id=chat_id, voice=f)
-            
+
             logger.debug(f"Sent voice message: {audio_path}")
-            
+
+        except SendError:
+            raise
         except subprocess.TimeoutExpired:
-            logger.error(f"Voice conversion timed out for {audio_path}")
+            raise SendError(f"Voice conversion timed out for {audio_path}")
         except Exception as e:
-            logger.error(f"Failed to send voice {audio_path}: {e}")
+            raise SendError(f"Failed to send voice {audio_path}: {e}") from e
         finally:
             # Clean up temp file
             if 'ogg_path' in locals() and ogg_path.exists():
@@ -302,27 +305,29 @@ class TelegramChannel(BaseChannel):
     
     async def _send_media(self, chat_id: int, media_path: str) -> None:
         """Send a media file to a chat.
-        
+
         Routes files to the appropriate Telegram API method based on extension:
         - Images (.jpg, .png, .gif): send_photo
-        - Stickers (.webp, .tgs): send_sticker  
+        - Stickers (.webp, .tgs): send_sticker
         - Voice (.ogg, .oga): send_voice (OGG with OPUS codec)
         - Audio (.mp3, .m4a, .wav, .flac): send_audio
         - Video (.mp4, .mov, .avi, .webm): send_video
         - Other: send_document
+
+        Raises:
+            SendError: If the media could not be sent.
         """
         if not self._app:
-            return
-        
+            raise SendError("Telegram bot not running")
+
         from pathlib import Path
         path = Path(media_path)
-        
+
         if not path.exists():
-            logger.error(f"Media file not found: {media_path}")
-            return
-        
+            raise SendError(f"Media file not found: {media_path}")
+
         suffix = path.suffix.lower()
-        
+
         try:
             with open(path, 'rb') as f:
                 if suffix in ('.webp', '.tgs'):
@@ -341,10 +346,12 @@ class TelegramChannel(BaseChannel):
                 else:
                     # Send as document (generic file)
                     await self._app.bot.send_document(chat_id=chat_id, document=f)
-            
+
             logger.debug(f"Sent media: {media_path}")
+        except SendError:
+            raise
         except Exception as e:
-            logger.error(f"Failed to send media {media_path}: {e}")
+            raise SendError(f"Failed to send media {media_path}: {e}") from e
     
     async def _on_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command."""
