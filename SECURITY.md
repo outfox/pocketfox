@@ -22,13 +22,13 @@ We aim to respond to security reports within 48 hours.
 
 ```bash
 # ✅ Good: Store in config file with restricted permissions
-chmod 600 ~/.nanobot/config.json
+chmod 600 ~/.nanobot/config.toml
 
 # ❌ Bad: Hardcoding keys in code or committing them
 ```
 
 **Recommendations:**
-- Store API keys in `~/.nanobot/config.json` with file permissions set to `0600`
+- Store API keys in `~/.nanobot/config.toml` with file permissions set to `0600`
 - Consider using environment variables for sensitive keys
 - Use OS keyring/credential manager for production deployments
 - Rotate API keys regularly
@@ -38,20 +38,15 @@ chmod 600 ~/.nanobot/config.json
 
 **IMPORTANT**: Always configure `allowFrom` lists for production use.
 
-```json
-{
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["123456789", "987654321"]
-    },
-    "whatsapp": {
-      "enabled": true,
-      "allowFrom": ["+1234567890"]
-    }
-  }
-}
+```toml
+[channels.telegram]
+enabled = true
+token = "YOUR_BOT_TOKEN"
+allow_from = ["123456789", "987654321"]
+
+[channels.whatsapp]
+enabled = true
+allow_from = ["+1234567890"]
 ```
 
 **Security Notes:**
@@ -145,7 +140,7 @@ For production use:
 3. **Set Proper Permissions**
    ```bash
    chmod 700 ~/.nanobot
-   chmod 600 ~/.nanobot/config.json
+   chmod 600 ~/.nanobot/config.toml
    chmod 700 ~/.nanobot/whatsapp-auth
    ```
 
