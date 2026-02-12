@@ -51,6 +51,9 @@ def _load_from_path(path: Path) -> Config:
             data = tomllib.load(f)
         data = _migrate_config(data)
         return Config.model_validate(data)
+    except OSError as e:
+        logger.warning("Failed to load config from {}: {}", path, e)
+        raise
     except (tomllib.TOMLDecodeError, ValueError) as e:
         logger.warning("Failed to load config from {}: {}", path, e)
         raise
