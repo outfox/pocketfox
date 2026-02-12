@@ -147,8 +147,9 @@ class SignalChannel(BaseChannel):
             for media_path in msg.media:
                 path = Path(media_path)
                 if path.exists():
-                    data = await asyncio.to_thread(path.read_bytes)
-                    encoded = base64.b64encode(data).decode("utf-8")
+                    encoded = await asyncio.to_thread(
+                        lambda p=path: base64.b64encode(p.read_bytes()).decode("utf-8")
+                    )
                     base64_attachments.append(encoded)
                 else:
                     logger.warning(f"Media file not found: {media_path}")
