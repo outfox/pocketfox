@@ -71,6 +71,46 @@ Send a message to the user (used internally).
 message(content: str, channel: str = None, chat_id: str = None) -> str
 ```
 
+### voice
+Generate voice audio from text using ElevenLabs TTS.
+```
+voice(
+    text: str,                    # Required: Text to convert to speech
+    output_path: str = None,      # Optional: Custom output path
+    voice_id: str = None,         # Optional: ElevenLabs voice ID (default from config)
+    stability: float = 0.0,       # Optional: 0.0=creative, 0.5=natural, 1.0=robust
+    speed: float = 1.0,           # Optional: 0.7=slow, 1.0=normal, 1.2=fast
+    title: str = None,            # Optional: Audio metadata title
+    artist: str = "Blue Duval"    # Optional: Audio metadata artist
+) -> str                          # Returns path to generated audio file
+```
+
+**Direction Tags (eleven_v3 model):**
+The text can include direction tags for expressive speech:
+- Emotions: `[excited]`, `[happy]`, `[sad]`, `[angry]`, `[sarcastic]`
+- Delivery: `[whispers]`, `[shouts]`, `[softly]`, `[firmly]`
+- Pacing: `[short pause]`, `[pause]`, `[long pause]`
+- Reactions: `[laughs]`, `[sighs]`, `[gasps]`, `[chuckles]`
+
+**Example:**
+```python
+voice(
+    text="[excited] Hello! [pause] I have [whispers] a secret... [normal, playful] Just kidding!",
+    stability=0.0,  # Creative mode for best emotional expression
+    title="Greeting"
+)
+```
+
+**Configuration:**
+Requires `tools.voice.apiKey` in config. Optional defaults:
+- `tools.voice.default_voice_id` — Default voice to use
+- `tools.voice.default_stability` — Default stability setting
+
+**Notes:**
+- Output format is MP3 (44.1kHz, 128kbps)
+- If ffmpeg is available, ID3 metadata is added automatically
+- Files are saved to `workspace/media/voice/` by default
+
 ## Background Tasks
 
 ### spawn
