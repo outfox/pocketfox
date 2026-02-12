@@ -165,19 +165,29 @@ class VoiceTool(Tool):
                 tmp.write(audio_bytes)
                 raw_path = tmp.name
             
-            # Add metadata with ffmpeg if available
-            if self._ffmpeg_path and (title or artist):
-                metadata_success = await self._add_metadata(
-                    raw_path=raw_path,
-                    final_path=final_path,
-                    title=title,
-                    artist=artist,
-                )
-                if not metadata_success:
-                    # Fallback: move raw file without metadata
+            # Add metadata with ffmpeg if available, ensuring temp file cleanup
+            try:
+                if self._ffmpeg_path and (title or artist):
+                    metadata_success = await self._add_metadata(
+                        raw_path=raw_path,
+                        final_path=final_path,
+                        title=title,
+                        artist=artist,
+                    )
+                    if not metadata_success:
+                        # Fallback: move raw file without metadata
+                        # _add_metadata does NOT remove raw_path on failure
+                        shutil.move(raw_path, final_path)
+                else:
                     shutil.move(raw_path, final_path)
-            else:
-                shutil.move(raw_path, final_path)
+            except Exception:
+                # Ensure temp file is cleaned up on any failure
+                try:
+                    if os.path.exists(raw_path):
+                        os.unlink(raw_path)
+                except OSError:
+                    pass
+                raise
             
             logger.info(f"Voice generated: {final_path}")
             return str(final_path)
@@ -252,7 +262,8 @@ class VoiceTool(Tool):
             artist: Optional artist tag.
             
         Returns:
-            True if successful, False if ffmpeg failed.
+            True if successful (raw_path is deleted), False if ffmpeg failed
+            (raw_path is NOT deleted - caller must handle cleanup or fallback).
         """
         metadata_args = [
             self._ffmpeg_path,
