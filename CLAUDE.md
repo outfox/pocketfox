@@ -70,7 +70,7 @@ Channel → InboundMessage → MessageBus → AgentLoop → LLM + ToolExecution 
 - **`nanobot/agent/subagent.py`** — Background task spawning. Subagents get a restricted tool set (no message, no spawn) and announce results back via system message.
 - **`nanobot/providers/registry.py`** — Single source of truth for LLM providers. Adding a provider: (1) add `ProviderSpec` to the `PROVIDERS` tuple, (2) add field to `ProvidersConfig` in `config/schema.py`. 13+ providers supported via LiteLLM.
 - **`nanobot/channels/`** — Chat platform integrations (Telegram, Discord, WhatsApp, Feishu, DingTalk, Signal). Each extends `BaseChannel` ABC with `start()`, `stop()`, `send()`, `is_allowed()`.
-- **`nanobot/config/schema.py`** — Pydantic-based config. Root: `Config` with `agents`, `channels`, `providers`, `gateway`, `tools` sections. Stored at `~/.nanobot/config.json`.
+- **`nanobot/config/schema.py`** — Pydantic-based config. Root: `Config` with `agents`, `channels`, `providers`, `gateway`, `tools` sections. Stored at `~/.nanobot/config.toml`.
 - **`nanobot/session/manager.py`** — Conversation persistence in JSONL format at `~/.nanobot/sessions/`.
 - **`nanobot/agent/memory.py`** — Daily notes (`YYYY-MM-DD.md`) and long-term memory (`MEMORY.md`) at `~/.nanobot/workspace/memory/`.
 - **`nanobot/cron/`** — Persistent scheduled tasks with croniter. Jobs stored in `~/.nanobot/cron/jobs.json`.
@@ -84,17 +84,17 @@ Channel → InboundMessage → MessageBus → AgentLoop → LLM + ToolExecution 
 - **Registry-driven providers**: Declarative `ProviderSpec` tuples with automatic env var handling, model prefixing, and per-model parameter overrides.
 - **Tool ABC**: All tools implement `name()`, `description()`, `parameters()` (JSON Schema), `execute()`. Registered via tool registry.
 - **Workspace bootstrap**: Agent context assembled from Markdown files in `~/.nanobot/workspace/` — personality, instructions, user info, and tool docs (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md).
-- **Security sandboxing**: `tools.restrictToWorkspace` config option restricts all file/shell tools to workspace directory (path traversal protection).
+- **Security sandboxing**: `tools.restrict_to_workspace` config option restricts all file/shell tools to workspace directory (path traversal protection).
 - **Message bus decoupling**: Channels publish/subscribe to `InboundMessage`/`OutboundMessage` events instead of directly calling agent code.
 
 ## Security & Best Practices
 
 **Critical security settings:**
-- `tools.restrictToWorkspace: true` — Sandbox all file/shell operations to workspace directory (IMPORTANT for production)
-- `channels.*.allowFrom` — Whitelist user IDs (empty = allow all; production should restrict)
+- `tools.restrict_to_workspace: true` — Sandbox all file/shell operations to workspace directory (IMPORTANT for production)
+- `channels.*.allow_from` — Whitelist user IDs (empty = allow all; production should restrict)
 - Shell tool blocks dangerous patterns: `rm -rf /`, fork bombs, `mkfs.*`, raw disk writes
 - Path traversal protection in filesystem tools
-- Config file at `~/.nanobot/config.json` should be `chmod 600`
+- Config file at `~/.nanobot/config.toml` should be `chmod 600`
 
 **For production deployments:**
 - Run as dedicated non-root user
@@ -163,7 +163,7 @@ Place in `~/.nanobot/workspace/skills/my-skill/SKILL.md` or create via `skill-cr
 ## Debugging & Development Tips
 
 **Logs**: Check `~/.nanobot/logs/` for debug output
-**Config**: Located at `~/.nanobot/config.json` (Pydantic validation errors show which fields are invalid)
+**Config**: Located at `~/.nanobot/config.toml` (Pydantic validation errors show which fields are invalid)
 **Sessions**: JSONL files in `~/.nanobot/sessions/` — each message is one JSON line
 **Agent loop**: Max 20 iterations before timeout (see `loop.py`)
 
