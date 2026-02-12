@@ -99,7 +99,7 @@ def redact_phone_number(phone: str) -> str:
     while hiding the middle portion.
 
     Examples:
-        +49123456789012 -> +49176***4108
+        +49123456789012 -> +4912***9012
         +1234567890 -> +123***7890
         12345 -> *2345 (short numbers: just hide first digit)
 
