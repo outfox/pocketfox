@@ -98,7 +98,9 @@ class VoiceTool(Tool):
                 from elevenlabs.client import ElevenLabs
                 self._client = ElevenLabs(api_key=self.api_key)
             except ImportError:
-                raise RuntimeError("elevenlabs package not installed. Run: pip install elevenlabs")
+                raise RuntimeError(
+                    "elevenlabs package not installed. Run: pip install elevenlabs"
+                ) from None
         return self._client
     
     async def execute(
@@ -183,9 +185,9 @@ class VoiceTool(Tool):
         except (OSError, asyncio.SubprocessError) as e:
             logger.exception("Voice generation failed")
             return f"Error: {e}"
-        except Exception as e:
+        except Exception:
             logger.exception("Voice generation failed unexpectedly")
-            return f"Error: {e}"
+            return "Error: Voice generation failed unexpectedly. Check logs for details."
     
     async def _generate_audio(
         self,
@@ -219,7 +221,7 @@ class VoiceTool(Tool):
         )
         
         # Run synchronous API call in thread pool
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         audio_iterator = await loop.run_in_executor(
             None,
             lambda: client.text_to_speech.convert(
