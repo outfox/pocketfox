@@ -220,25 +220,21 @@ class VoiceTool(Tool):
             speed=speed,  # None means use default (1.0)
         )
         
-        # Run synchronous API call in thread pool
-        loop = asyncio.get_running_loop()
-        audio_iterator = await loop.run_in_executor(
-            None,
-            lambda: client.text_to_speech.convert(
+        def generate_and_collect() -> bytes:
+            """Call API and consume iterator in thread pool."""
+            audio_iterator = client.text_to_speech.convert(
                 voice_id=voice_id,
                 text=text,
                 model_id="eleven_v3",
                 output_format="mp3_44100_128",
                 voice_settings=voice_settings,
             )
-        )
+            # Consume iterator here to avoid blocking main thread
+            return b"".join(audio_iterator)
         
-        # Collect all chunks from the iterator
-        audio_chunks = []
-        for chunk in audio_iterator:
-            audio_chunks.append(chunk)
-        
-        return b"".join(audio_chunks)
+        # Run synchronous API call AND streaming consumption in thread pool
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, generate_and_collect)
     
     async def _add_metadata(
         self,
