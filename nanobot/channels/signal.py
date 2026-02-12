@@ -14,7 +14,7 @@ from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel
+from nanobot.channels.base import BaseChannel, SendError
 from nanobot.config.schema import SignalConfig
 
 if TYPE_CHECKING:
@@ -121,50 +121,60 @@ class SignalChannel(BaseChannel):
             self._session = None
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through Signal."""
+        """Send a message through Signal.
+        
+        Raises:
+            SendError: If the message could not be delivered.
+        """
         if not self._session:
-            logger.warning("Signal session not initialized")
-            return
+            raise SendError("Signal session not initialized")
 
+        # Strip "group." prefix from chat_id for group messages
+        # The v2/send endpoint expects raw group IDs in recipients array
+        recipient = msg.chat_id
+        if recipient.startswith("group."):
+            recipient = recipient[6:]  # Remove "group." prefix
+
+        payload: dict[str, Any] = {
+            "message": msg.content,
+            "number": self.config.phone_number,
+            "recipients": [recipient]
+        }
+
+        # Handle media attachments
+        if msg.media:
+            base64_attachments = []
+            for media_path in msg.media:
+                path = Path(media_path)
+                if path.exists():
+                    with open(path, "rb") as f:
+                        encoded = base64.b64encode(f.read()).decode("utf-8")
+                        base64_attachments.append(encoded)
+                else:
+                    logger.warning(f"Media file not found: {media_path}")
+
+            if base64_attachments:
+                payload["base64_attachments"] = base64_attachments
+
+        url = f"{self._base_url}/v2/send"
+        send_timeout = aiohttp.ClientTimeout(total=30)
+        
         try:
-            # Strip "group." prefix from chat_id for group messages
-            # The v2/send endpoint expects raw group IDs in recipients array
-            recipient = msg.chat_id
-            if recipient.startswith("group."):
-                recipient = recipient[6:]  # Remove "group." prefix
-
-            payload: dict[str, Any] = {
-                "message": msg.content,
-                "number": self.config.phone_number,
-                "recipients": [recipient]
-            }
-
-            # Handle media attachments
-            if msg.media:
-                base64_attachments = []
-                for media_path in msg.media:
-                    path = Path(media_path)
-                    if path.exists():
-                        with open(path, "rb") as f:
-                            encoded = base64.b64encode(f.read()).decode("utf-8")
-                            base64_attachments.append(encoded)
-                    else:
-                        logger.warning(f"Media file not found: {media_path}")
-
-                if base64_attachments:
-                    payload["base64_attachments"] = base64_attachments
-
-            url = f"{self._base_url}/v2/send"
-            send_timeout = aiohttp.ClientTimeout(total=30)
             async with self._session.post(url, json=payload, timeout=send_timeout) as resp:
                 if resp.status not in (200, 201):
                     text = await resp.text()
                     logger.error(f"Failed to send Signal message: {resp.status} - {text}")
+                    raise SendError(f"Signal API error {resp.status}: {text}")
                 else:
                     logger.debug(f"Signal message sent to {msg.chat_id}")
-
+        except SendError:
+            raise  # Re-raise our own errors
+        except aiohttp.ClientError as e:
+            logger.error(f"Signal network error: {e}")
+            raise SendError(f"Signal network error: {e}") from e
         except Exception as e:
             logger.error(f"Error sending Signal message: {e}")
+            raise SendError(f"Signal error: {e}") from e
 
     async def _handle_signal_message(self, raw: str) -> None:
         """Handle a message from the Signal REST API."""

@@ -9,6 +9,16 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 
 
+class SendError(Exception):
+    """Raised when sending a message fails.
+    
+    This exception should be raised by channel implementations when
+    message delivery fails, so that the message tool can report the
+    failure back to the agent.
+    """
+    pass
+
+
 class BaseChannel(ABC):
     """
     Abstract base class for chat channel implementations.
@@ -55,6 +65,9 @@ class BaseChannel(ABC):
         
         Args:
             msg: The message to send.
+        
+        Raises:
+            SendError: If the message could not be delivered.
         """
         pass
     

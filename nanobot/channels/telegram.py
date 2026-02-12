@@ -13,7 +13,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel
+from nanobot.channels.base import BaseChannel, SendError
 from nanobot.config.schema import TelegramConfig
 
 if TYPE_CHECKING:
@@ -187,10 +187,13 @@ class TelegramChannel(BaseChannel):
             self._app = None
     
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through Telegram."""
+        """Send a message through Telegram.
+        
+        Raises:
+            SendError: If the message could not be delivered.
+        """
         if not self._app:
-            logger.warning("Telegram bot not running")
-            return
+            raise SendError("Telegram bot not running")
         
         # Stop typing indicator for this chat
         self._stop_typing(msg.chat_id)
@@ -198,7 +201,10 @@ class TelegramChannel(BaseChannel):
         try:
             # chat_id should be the Telegram chat ID (integer)
             chat_id = int(msg.chat_id)
-            
+        except ValueError:
+            raise SendError(f"Invalid chat_id: {msg.chat_id}")
+        
+        try:
             # Send voice messages first (if any)
             for voice_path in msg.voice:
                 await self._send_voice(chat_id, voice_path)
@@ -216,18 +222,19 @@ class TelegramChannel(BaseChannel):
                     text=html_content,
                     parse_mode="HTML"
                 )
-        except ValueError:
-            logger.error(f"Invalid chat_id: {msg.chat_id}")
+        except SendError:
+            raise  # Re-raise our own errors
         except Exception as e:
             # Fallback to plain text if HTML parsing fails
             logger.warning(f"HTML parse failed, falling back to plain text: {e}")
             try:
                 await self._app.bot.send_message(
-                    chat_id=int(msg.chat_id),
+                    chat_id=chat_id,
                     text=msg.content
                 )
             except Exception as e2:
                 logger.error(f"Error sending Telegram message: {e2}")
+                raise SendError(f"Telegram error: {e2}") from e2
     
     async def _send_voice(self, chat_id: int, audio_path: str) -> None:
         """Send an audio file as a Telegram voice message.
