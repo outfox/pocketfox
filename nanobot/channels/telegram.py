@@ -13,7 +13,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel
+from nanobot.channels.base import BaseChannel, SendError
 from nanobot.config.schema import TelegramConfig
 
 if TYPE_CHECKING:
@@ -187,10 +187,13 @@ class TelegramChannel(BaseChannel):
             self._app = None
     
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through Telegram."""
+        """Send a message through Telegram.
+        
+        Raises:
+            SendError: If the message could not be delivered.
+        """
         if not self._app:
-            logger.warning("Telegram bot not running")
-            return
+            raise SendError("Telegram bot not running")
         
         # Stop typing indicator for this chat
         self._stop_typing(msg.chat_id)
@@ -198,7 +201,10 @@ class TelegramChannel(BaseChannel):
         try:
             # chat_id should be the Telegram chat ID (integer)
             chat_id = int(msg.chat_id)
-            
+        except ValueError:
+            raise SendError(f"Invalid chat_id: {msg.chat_id}")
+        
+        try:
             # Send voice messages first (if any)
             for voice_path in msg.voice:
                 await self._send_voice(chat_id, voice_path)
@@ -216,47 +222,50 @@ class TelegramChannel(BaseChannel):
                     text=html_content,
                     parse_mode="HTML"
                 )
-        except ValueError:
-            logger.error(f"Invalid chat_id: {msg.chat_id}")
+        except SendError:
+            raise  # Re-raise our own errors
         except Exception as e:
             # Fallback to plain text if HTML parsing fails
             logger.warning(f"HTML parse failed, falling back to plain text: {e}")
             try:
                 await self._app.bot.send_message(
-                    chat_id=int(msg.chat_id),
+                    chat_id=chat_id,
                     text=msg.content
                 )
             except Exception as e2:
                 logger.error(f"Error sending Telegram message: {e2}")
+                raise SendError(f"Telegram error: {e2}") from e2
     
     async def _send_voice(self, chat_id: int, audio_path: str) -> None:
         """Send an audio file as a Telegram voice message.
-        
+
         Converts the audio to OGG with OPUS codec (required by Telegram for voice messages).
         Supports common audio formats: mp3, wav, m4a, flac, ogg, etc.
-        
+
         Args:
             chat_id: Telegram chat ID to send to.
             audio_path: Path to the audio file to send.
+
+        Raises:
+            SendError: If the voice message could not be sent.
         """
         if not self._app:
-            return
-        
+            raise SendError("Telegram bot not running")
+
         import subprocess
         import tempfile
         from pathlib import Path
-        
+
         path = Path(audio_path)
-        
+
         if not path.exists():
-            logger.error(f"Voice file not found: {audio_path}")
-            return
-        
+            raise SendError(f"Voice file not found: {audio_path}")
+
         try:
             # Create temp file for converted audio
             with tempfile.NamedTemporaryFile(suffix='.ogg', delete=False) as tmp:
                 ogg_path = Path(tmp.name)
-            
+
             # Convert to OGG/OPUS using ffmpeg
             # -ac 1: mono (voice messages are typically mono)
             # -ar 48000: 48kHz sample rate (OPUS standard)
@@ -273,21 +282,22 @@ class TelegramChannel(BaseChannel):
                 capture_output=True,
                 timeout=30
             )
-            
+
             if result.returncode != 0:
-                logger.error(f"ffmpeg conversion failed: {result.stderr.decode()}")
-                return
-            
+                raise SendError(f"ffmpeg conversion failed: {result.stderr.decode()}")
+
             # Send as voice message
             with open(ogg_path, 'rb') as f:
                 await self._app.bot.send_voice(chat_id=chat_id, voice=f)
-            
+
             logger.debug(f"Sent voice message: {audio_path}")
-            
+
+        except SendError:
+            raise
         except subprocess.TimeoutExpired:
-            logger.error(f"Voice conversion timed out for {audio_path}")
+            raise SendError(f"Voice conversion timed out for {audio_path}")
         except Exception as e:
-            logger.error(f"Failed to send voice {audio_path}: {e}")
+            raise SendError(f"Failed to send voice {audio_path}: {e}") from e
         finally:
             # Clean up temp file
             if 'ogg_path' in locals() and ogg_path.exists():
@@ -295,27 +305,29 @@ class TelegramChannel(BaseChannel):
     
     async def _send_media(self, chat_id: int, media_path: str) -> None:
         """Send a media file to a chat.
-        
+
         Routes files to the appropriate Telegram API method based on extension:
         - Images (.jpg, .png, .gif): send_photo
-        - Stickers (.webp, .tgs): send_sticker  
+        - Stickers (.webp, .tgs): send_sticker
         - Voice (.ogg, .oga): send_voice (OGG with OPUS codec)
         - Audio (.mp3, .m4a, .wav, .flac): send_audio
         - Video (.mp4, .mov, .avi, .webm): send_video
         - Other: send_document
+
+        Raises:
+            SendError: If the media could not be sent.
         """
         if not self._app:
-            return
-        
+            raise SendError("Telegram bot not running")
+
         from pathlib import Path
         path = Path(media_path)
-        
+
         if not path.exists():
-            logger.error(f"Media file not found: {media_path}")
-            return
-        
+            raise SendError(f"Media file not found: {media_path}")
+
         suffix = path.suffix.lower()
-        
+
         try:
             with open(path, 'rb') as f:
                 if suffix in ('.webp', '.tgs'):
@@ -334,10 +346,12 @@ class TelegramChannel(BaseChannel):
                 else:
                     # Send as document (generic file)
                     await self._app.bot.send_document(chat_id=chat_id, document=f)
-            
+
             logger.debug(f"Sent media: {media_path}")
+        except SendError:
+            raise
         except Exception as e:
-            logger.error(f"Failed to send media {media_path}: {e}")
+            raise SendError(f"Failed to send media {media_path}: {e}") from e
     
     async def _on_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /start command."""

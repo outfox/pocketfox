@@ -4,6 +4,7 @@ from typing import Any, Callable, Awaitable
 
 from nanobot.agent.tools.base import Tool
 from nanobot.bus.events import OutboundMessage
+from nanobot.channels.base import SendError
 
 
 class MessageTool(Tool):
@@ -102,5 +103,7 @@ class MessageTool(Tool):
                 attachments.append(f"{len(voice)} voice")
             attachment_info = f" with {', '.join(attachments)}" if attachments else ""
             return f"Message sent to {channel}:{chat_id}{attachment_info}"
+        except SendError as e:
+            return f"Error: Failed to send message - {str(e)}"
         except Exception as e:
             return f"Error sending message: {str(e)}"
