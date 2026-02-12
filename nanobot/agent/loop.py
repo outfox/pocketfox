@@ -18,6 +18,7 @@ from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
 from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.cron import CronTool
+from nanobot.agent.tools.voice import VoiceTool
 from nanobot.agent.subagent import SubagentManager
 from nanobot.session.manager import SessionManager
 
@@ -43,11 +44,12 @@ class AgentLoop:
         max_iterations: int = 20,
         brave_api_key: str | None = None,
         exec_config: "ExecToolConfig | None" = None,
+        voice_config: "VoiceToolConfig | None" = None,
         cron_service: "CronService | None" = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
     ):
-        from nanobot.config.schema import ExecToolConfig
+        from nanobot.config.schema import ExecToolConfig, VoiceToolConfig
         from nanobot.cron.service import CronService
         self.bus = bus
         self.provider = provider
@@ -56,6 +58,7 @@ class AgentLoop:
         self.max_iterations = max_iterations
         self.brave_api_key = brave_api_key
         self.exec_config = exec_config or ExecToolConfig()
+        self.voice_config = voice_config or VoiceToolConfig()
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
         
@@ -106,6 +109,15 @@ class AgentLoop:
         # Cron tool (for scheduling)
         if self.cron_service:
             self.tools.register(CronTool(self.cron_service))
+        
+        # Voice tool (TTS)
+        if self.voice_config.api_key:
+            self.tools.register(VoiceTool(
+                api_key=self.voice_config.api_key,
+                default_voice_id=self.voice_config.default_voice_id,
+                default_stability=self.voice_config.default_stability,
+                workspace=self.workspace,
+            ))
     
     async def run(self) -> None:
         """Run the agent loop, processing messages from the bus."""
