@@ -1,0 +1,33 @@
+# NanoBot configuration
+# Copy to ~/.nanobot/config.toml and fill in your API keys.
+# Docs: https://github.com/HKUDS/nanobot
+
+[providers.openrouter]
+api_key = "${OPENROUTER_API_KEY}"
+api_base = "https://openrouter.ai/api/v1"
+
+[providers.anthropic]
+api_key = "${ANTHROPIC_API_KEY}"
+
+[providers.groq]
+api_key = "${GROQ_API_KEY}"
+
+[agents.defaults]
+model = "openrouter/anthropic/claude-sonnet-4-5"
+
+[tools]
+restrict_to_workspace = true
+
+[tools.web.search]
+api_key = "${BRAVE_API_KEY}"
+
+[channels.telegram]
+enabled = true
+token = "${TELEGRAM_BOT_TOKEN}"
+allow_from = ["${TELEGRAM_ALLOW_FROM}"] # Telegram IDs
+
+[channels.signal]
+enabled = true
+api_url = "${SIGNAL_CLI_URL}"
+phone_number = "${SIGNAL_PHONE_NUMBER}"
+allow_from = ["${SIGNAL_ALLOW_FROM}"] # Phone Numbers

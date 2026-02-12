@@ -6,9 +6,7 @@
     <a href="https://pepy.tech/project/nanobot-ai"><img src="https://static.pepy.tech/badge/nanobot-ai" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-    <a href="./COMMUNICATION.md"><img src="https://img.shields.io/badge/Feishu-Group-E9DBFC?style=flat&logo=feishu&logoColor=white" alt="Feishu"></a>
-    <a href="./COMMUNICATION.md"><img src="https://img.shields.io/badge/WeChat-Group-C5EAB4?style=flat&logo=wechat&logoColor=white" alt="WeChat"></a>
-    <a href="https://discord.gg/MnCvHqpUGB"><img src="https://img.shields.io/badge/Discord-Community-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord"></a>
+   <a href="https://discord.gg/MnCvHqpUGB"><img src="https://img.shields.io/badge/Discord-Community-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord"></a>
   </p>
 </div>
 
@@ -92,7 +90,7 @@ pip install nanobot-ai
 ## 🚀 Quick Start
 
 > [!TIP]
-> Set your API key in `~/.nanobot/config.json`.
+> Set your API key in `~/.nanobot/config.toml`.
 > Get API keys: [OpenRouter](https://openrouter.ai/keys) (Global) · [DashScope](https://dashscope.console.aliyun.com) (Qwen) · [Brave Search](https://brave.com/search/api/) (optional, for web search)
 
 **1. Initialize**
@@ -101,22 +99,15 @@ pip install nanobot-ai
 nanobot onboard
 ```
 
-**2. Configure** (`~/.nanobot/config.json`)
+**2. Configure** (`~/.nanobot/config.toml`)
 
 For OpenRouter - recommended for global users:
-```json
-{
-  "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-opus-4-5"
-    }
-  }
-}
+```toml
+[providers.openrouter]
+api_key = "sk-or-v1-xxx"
+
+[agents.defaults]
+model = "anthropic/claude-opus-4-5"
 ```
 
 **3. Chat**
@@ -137,22 +128,15 @@ Run nanobot with your own local models using vLLM or any OpenAI-compatible serve
 vllm serve meta-llama/Llama-3.1-8B-Instruct --port 8000
 ```
 
-**2. Configure** (`~/.nanobot/config.json`)
+**2. Configure** (`~/.nanobot/config.toml`)
 
-```json
-{
-  "providers": {
-    "vllm": {
-      "apiKey": "dummy",
-      "apiBase": "http://localhost:8000/v1"
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": "meta-llama/Llama-3.1-8B-Instruct"
-    }
-  }
-}
+```toml
+[providers.vllm]
+api_key = "dummy"
+api_base = "http://localhost:8000/v1"
+
+[agents.defaults]
+model = "meta-llama/Llama-3.1-8B-Instruct"
 ```
 
 **3. Chat**
@@ -162,7 +146,7 @@ nanobot agent -m "Hello from my local LLM!"
 ```
 
 > [!TIP]
-> The `apiKey` can be any non-empty string for local servers that don't require authentication.
+> The `api_key` can be any non-empty string for local servers that don't require authentication.
 
 ## 💬 Chat Apps
 
@@ -186,16 +170,11 @@ Talk to your nanobot through Telegram, Discord, WhatsApp, or Feishu — anytime,
 
 **2. Configure**
 
-```json
-{
-  "channels": {
-    "telegram": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  }
-}
+```toml
+[channels.telegram]
+enabled = true
+token = "YOUR_BOT_TOKEN"
+allow_from = ["YOUR_USER_ID"]
 ```
 
 > Get your user ID from `@userinfobot` on Telegram.
@@ -226,16 +205,11 @@ nanobot gateway
 
 **4. Configure**
 
-```json
-{
-  "channels": {
-    "discord": {
-      "enabled": true,
-      "token": "YOUR_BOT_TOKEN",
-      "allowFrom": ["YOUR_USER_ID"]
-    }
-  }
-}
+```toml
+[channels.discord]
+enabled = true
+token = "YOUR_BOT_TOKEN"
+allow_from = ["YOUR_USER_ID"]
 ```
 
 **5. Invite the bot**
@@ -266,15 +240,10 @@ nanobot channels login
 
 **2. Configure**
 
-```json
-{
-  "channels": {
-    "whatsapp": {
-      "enabled": true,
-      "allowFrom": ["+1234567890"]
-    }
-  }
-}
+```toml
+[channels.whatsapp]
+enabled = true
+allow_from = ["+1234567890"]
 ```
 
 **3. Run** (two terminals)
@@ -305,23 +274,18 @@ Uses **WebSocket** long connection — no public IP required.
 
 **2. Configure**
 
-```json
-{
-  "channels": {
-    "feishu": {
-      "enabled": true,
-      "appId": "cli_xxx",
-      "appSecret": "xxx",
-      "encryptKey": "",
-      "verificationToken": "",
-      "allowFrom": []
-    }
-  }
-}
+```toml
+[channels.feishu]
+enabled = true
+app_id = "cli_xxx"
+app_secret = "xxx"
+encrypt_key = ""
+verification_token = ""
+allow_from = []
 ```
 
-> `encryptKey` and `verificationToken` are optional for Long Connection mode.
-> `allowFrom`: Leave empty to allow all users, or add `["ou_xxx"]` to restrict access.
+> `encrypt_key` and `verification_token` are optional for Long Connection mode.
+> `allow_from`: Leave empty to allow all users, or add `["ou_xxx"]` to restrict access.
 
 **3. Run**
 
@@ -350,20 +314,15 @@ Uses **Stream Mode** — no public IP required.
 
 **2. Configure**
 
-```json
-{
-  "channels": {
-    "dingtalk": {
-      "enabled": true,
-      "clientId": "YOUR_APP_KEY",
-      "clientSecret": "YOUR_APP_SECRET",
-      "allowFrom": []
-    }
-  }
-}
+```toml
+[channels.dingtalk]
+enabled = true
+client_id = "YOUR_APP_KEY"
+client_secret = "YOUR_APP_SECRET"
+allow_from = []
 ```
 
-> `allowFrom`: Leave empty to allow all users, or add `["staffId"]` to restrict access.
+> `allow_from`: Leave empty to allow all users, or add `["staffId"]` to restrict access.
 
 **3. Run**
 
@@ -405,20 +364,15 @@ curl -X POST "http://localhost:8080/v1/register/+491234567890/verify/123456"
 
 **3. Configure**
 
-```json
-{
-  "channels": {
-    "signal": {
-      "enabled": true,
-      "apiUrl": "http://signal:8080",
-      "phoneNumber": "+491234567890",
-      "allowFrom": ["+491111111111", "+492222222222"]
-    }
-  }
-}
+```toml
+[channels.signal]
+enabled = true
+api_url = "http://signal:8080"
+phone_number = "+491234567890"
+allow_from = ["+491111111111", "+492222222222"]
 ```
 
-> `allowFrom`: List of phone numbers that can message the bot. Leave empty to allow everyone.
+> `allow_from`: List of phone numbers that can message the bot. Leave empty to allow everyone.
 
 **4. Run**
 
@@ -433,7 +387,7 @@ nanobot gateway
 
 ## ⚙️ Configuration
 
-Config file: `~/.nanobot/config.json`
+Config file: `~/.nanobot/config.toml`
 
 ### Providers
 
@@ -502,12 +456,12 @@ That's it! Environment variables, model prefixing, config matching, and `nanobot
 ### Security
 
 > [!TIP]
-> For production deployments, set `"restrictToWorkspace": true` in your config to sandbox the agent.
+> For production deployments, set `restrict_to_workspace = true` in your config to sandbox the agent.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `tools.restrictToWorkspace` | `false` | When `true`, restricts **all** agent tools (shell, file read/write/edit, list) to the workspace directory. Prevents path traversal and out-of-scope access. |
-| `channels.*.allowFrom` | `[]` (allow all) | Whitelist of user IDs. Empty = allow everyone; non-empty = only listed users can interact. |
+| `tools.restrict_to_workspace` | `false` | When `true`, restricts **all** agent tools (shell, file read/write/edit, list) to the workspace directory. Prevents path traversal and out-of-scope access. |
+| `channels.*.allow_from` | `[]` (allow all) | Whitelist of user IDs. Empty = allow everyone; non-empty = only listed users can interact. |
 
 
 ## CLI Reference
@@ -554,7 +508,7 @@ docker build -t nanobot .
 docker run -v ~/.nanobot:/root/.nanobot --rm nanobot onboard
 
 # Edit config on host to add API keys
-vim ~/.nanobot/config.json
+vim ~/.nanobot/config.toml
 
 # Run gateway (connects to Telegram/WhatsApp)
 docker run -v ~/.nanobot:/root/.nanobot -p 18790:18790 nanobot gateway
