@@ -219,7 +219,8 @@ class AgentLoop:
                 
                 # Execute tools
                 for tool_call in response.tool_calls:
-                    args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
+                    redacted = self.tools.redact_params(tool_call.name, tool_call.arguments)
+                    args_str = json.dumps(redacted, ensure_ascii=False)
                     logger.info(f"Tool call: {tool_call.name}({args_str[:200]})")
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
                     messages = self.context.add_tool_result(
@@ -323,7 +324,8 @@ class AgentLoop:
                 )
                 
                 for tool_call in response.tool_calls:
-                    args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
+                    redacted = self.tools.redact_params(tool_call.name, tool_call.arguments)
+                    args_str = json.dumps(redacted, ensure_ascii=False)
                     logger.info(f"Tool call: {tool_call.name}({args_str[:200]})")
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
                     messages = self.context.add_tool_result(

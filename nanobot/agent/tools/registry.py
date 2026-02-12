@@ -61,6 +61,22 @@ class ToolRegistry:
         except Exception as e:
             return f"Error executing {name}: {str(e)}"
     
+    def redact_params(self, name: str, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Redact sensitive parameters for a tool.
+        
+        Args:
+            name: Tool name.
+            params: Parameters to redact.
+        
+        Returns:
+            Redacted parameters, or original if tool not found.
+        """
+        tool = self._tools.get(name)
+        if tool:
+            return tool.redact_params(params)
+        return params
+    
     @property
     def tool_names(self) -> list[str]:
         """Get list of registered tool names."""

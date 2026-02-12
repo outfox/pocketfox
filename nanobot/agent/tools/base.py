@@ -90,6 +90,21 @@ class Tool(ABC):
                 errors.extend(self._validate(item, schema["items"], f"{path}[{i}]" if path else f"[{i}]"))
         return errors
     
+    def redact_params(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Redact sensitive parameters for logging.
+        
+        Override in subclasses to redact tool-specific sensitive data.
+        Default implementation returns params unchanged.
+        
+        Args:
+            params: The parameters to potentially redact.
+        
+        Returns:
+            A copy of params with sensitive values redacted.
+        """
+        return params
+    
     def to_schema(self) -> dict[str, Any]:
         """Convert tool to OpenAI function schema format."""
         return {
