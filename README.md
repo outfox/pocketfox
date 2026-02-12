@@ -463,6 +463,50 @@ That's it! Environment variables, model prefixing, config matching, and `nanobot
 | `tools.restrict_to_workspace` | `false` | When `true`, restricts **all** agent tools (shell, file read/write/edit, list) to the workspace directory. Prevents path traversal and out-of-scope access. |
 | `channels.*.allow_from` | `[]` (allow all) | Whitelist of user IDs. Empty = allow everyone; non-empty = only listed users can interact. |
 
+<details>
+<summary><b>Docker Secrets</b></summary>
+
+nanobot supports [Docker Secrets](https://docs.docker.com/engine/swarm/secrets/) for sensitive configuration like passwords and API keys.
+
+**1. Define secrets in `docker-compose.yml`:**
+
+```yaml
+services:
+  nanobot:
+    image: nanobot
+    secrets:
+      - keepassxc_passphrase
+      - my_api_key
+
+secrets:
+  keepassxc_passphrase:
+    file: ./secrets/keepassxc_passphrase.txt
+  my_api_key:
+    environment: MY_API_KEY  # or from env var
+```
+
+**2. Use in code:**
+
+```python
+from nanobot.utils import get_secret, require_secret
+
+# Returns None if not found
+api_key = get_secret("my_api_key")
+
+# Raises SecretNotFoundError if not found
+passphrase = require_secret("keepassxc_passphrase")
+```
+
+**Lookup order:**
+1. Docker secret at `/run/secrets/<name>`
+2. Environment variable `NANOBOT_<NAME>` (uppercased)
+3. Default value (if provided)
+
+> [!TIP]
+> Docker secrets are never exposed in logs, environment listings, or `docker inspect` output — much safer than environment variables!
+
+</details>
+
 
 ## CLI Reference
 
