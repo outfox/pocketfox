@@ -237,6 +237,31 @@ Information about the user goes here.
 - Timezone: (your timezone)
 - Language: (your preferred language)
 """,
+        "SECRETS.md": """# Secrets
+
+This file documents which Docker secrets are available.
+
+## Security Rules
+
+1. **NEVER read secret files directly** — don't `cat` them to see the content
+2. **NEVER pass secrets as command arguments** — they'll appear in logs
+3. **ALWAYS pipe secrets** — use `cat /run/secrets/<name> | command`
+
+## Available Secrets
+
+<!-- Add your secrets here when you configure Docker secrets -->
+
+| Secret Name | Path | Purpose |
+|-------------|------|---------|
+| (none configured) | — | — |
+
+## Usage Example
+
+```bash
+# Pipe a secret to a command that accepts stdin
+cat /run/secrets/my_passphrase | some-command --password-stdin
+```
+""",
     }
     
     for filename, content in templates.items():
