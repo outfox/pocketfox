@@ -132,7 +132,8 @@ class VoiceToolConfig(BaseModel):
     """Voice/TTS tool configuration using ElevenLabs."""
     api_key: str = ""  # ElevenLabs API key
     default_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"  # George - clear English, no strong accent
-    default_stability: float = 0.0  # 0.0=creative, 0.5=natural, 1.0=robust
+    default_stability: float = 0.5  # 0.0=creative, 0.5=natural, 1.0=robust
+    default_speed: float = 1.0  # 0.6=slow, 1.0=natural, 1.2=fast
 
 
 class ToolsConfig(BaseModel):

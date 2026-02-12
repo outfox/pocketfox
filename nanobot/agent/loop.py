@@ -116,6 +116,7 @@ class AgentLoop:
                 api_key=self.voice_config.api_key,
                 default_voice_id=self.voice_config.default_voice_id,
                 default_stability=self.voice_config.default_stability,
+                default_speed=self.voice_config.default_speed,
                 workspace=self.workspace,
             ))
     

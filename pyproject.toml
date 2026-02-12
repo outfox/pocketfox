@@ -33,6 +33,7 @@ dependencies = [
     "lark-oapi>=1.0.0",
     "socksio>=1.0.0",
     "tomli_w>=1.0.0",
+    "elevenlabs>=2.35.0",
 ]
 
 [project.optional-dependencies]

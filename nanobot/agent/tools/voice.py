@@ -80,7 +80,8 @@ class VoiceTool(Tool):
         self,
         api_key: str | None = None,
         default_voice_id: str | None = None,
-        default_stability: float = 0.0,
+        default_stability: float = 0.5,
+        default_speed: float = 1.0,
         workspace: Path | None = None,
     ):
         """Initialize the voice tool.
@@ -94,6 +95,7 @@ class VoiceTool(Tool):
         self.api_key = api_key or ""
         self.default_voice_id = default_voice_id or "JBFqnCBsd6RMkjVDRZzb"  # George (neutral English)
         self.default_stability = default_stability
+        self.default_speed = default_speed
         self.workspace = workspace or Path.home() / ".nanobot" / "workspace"
         
         # Check if ffmpeg is available for metadata
@@ -151,6 +153,7 @@ class VoiceTool(Tool):
         # Apply defaults
         voice_id = voice_id or self.default_voice_id
         stability = stability if stability is not None else self.default_stability
+        speed = speed if speed is not None else self.default_speed
         artist = artist or "Blue Duval"
         
         # Determine output path
@@ -206,7 +209,7 @@ class VoiceTool(Tool):
             logger.info(f"Voice generated: {final_path}")
             return str(final_path)
             
-        except (OSError, asyncio.SubprocessError) as e:
+        except OSError as e:
             logger.exception("Voice generation failed")
             return f"Error: {e}"
         except Exception:
@@ -304,7 +307,7 @@ class VoiceTool(Tool):
         
         if proc.returncode != 0:
             error_msg = stderr.decode() if stderr else "unknown error"
-            logger.warning(f"ffmpeg metadata failed (returncode={proc.returncode}): {error_msg}")
+            logger.warning(f"ffmpeg metadata failed (return-code={proc.returncode}): {error_msg}")
             return False
         
         # Clean up raw file only on success
