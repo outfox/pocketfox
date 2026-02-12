@@ -60,9 +60,9 @@ class VoiceTool(Tool):
                 },
                 "speed": {
                     "type": "number",
-                    "description": "Speech speed multiplier (0.5=slow, 1.0=normal, 2.0=fast). Default: 1.0",
-                    "minimum": 0.5,
-                    "maximum": 2.0
+                    "description": "Speech speed multiplier (0.7=slow, 1.0=normal, 1.2=fast). Default: 1.0",
+                    "minimum": 0.7,
+                    "maximum": 1.2
                 },
                 "title": {
                     "type": "string",
