@@ -23,7 +23,7 @@ class VoiceTool(Tool):
     name = "voice"
     description = (
         "Generate voice audio from text using ElevenLabs TTS. "
-        "Supports v3 direction tags like [excited], [whispers], [pause], etc. "
+        "The eleven_v3 model supports direction tags like [excited], [whispers], [pause], etc. "
         "Returns the path to the generated audio file."
     )
     parameters: ClassVar[dict[str, Any]] = {
@@ -39,7 +39,7 @@ class VoiceTool(Tool):
             },
             "voice_id": {
                 "type": "string",
-                "description": "ElevenLabs voice ID. Defaults to configured voice."
+                "description": "ElevenLabs voice ID. If not specified, uses the default from config (tools.voice.default_voice_id)."
             },
             "stability": {
                 "type": "number",
@@ -295,9 +295,8 @@ class VoiceTool(Tool):
         return True
     
     def redact_params(self, params: dict[str, Any]) -> dict[str, Any]:
-        """Redact sensitive content from logs."""
+        """Prepare params for logging by truncating long text."""
         redacted = params.copy()
-        # Truncate long text for logging
         if "text" in redacted and len(redacted["text"]) > 100:
             redacted["text"] = redacted["text"][:100] + "..."
         return redacted
