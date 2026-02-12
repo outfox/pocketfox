@@ -28,6 +28,6 @@ allow_from = ["${TELEGRAM_ALLOW_FROM}"] # Telegram IDs
 
 [channels.signal]
 enabled = true
-apiUrl = "${SIGNAL_CLI_URL}"
-phone_number = "${SIGNAL_PHONE_NUMBER"
-allowlist = ["${SIGNAL_ALLOW_FROM}"] # Phone Numbers
+api_url = "${SIGNAL_CLI_URL}"
+phone_number = "${SIGNAL_PHONE_NUMBER}"
+allow_from = ["${SIGNAL_ALLOW_FROM}"] # Phone Numbers
