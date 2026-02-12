@@ -515,10 +515,8 @@ class TelegramChannel(BaseChannel):
         
         str_chat_id = str(chat_id)
         
-        # Start typing indicator before processing
-        self._start_typing(str_chat_id)
-        
-        # Forward to the message bus
+        # Forward to the message bus (typing indicator is started in _handle_message
+        # AFTER access check passes, to avoid leaking typing to denied senders)
         await self._handle_message(
             sender_id=sender_id,
             chat_id=str_chat_id,
@@ -532,6 +530,14 @@ class TelegramChannel(BaseChannel):
                 "is_group": message.chat.type != "private"
             }
         )
+    
+    async def _start_typing_indicator(self, chat_id: str) -> None:
+        """Start sending 'typing...' indicator for a chat.
+        
+        Overrides the base class method to provide Telegram-specific typing feedback.
+        This is called from _handle_message AFTER access check passes.
+        """
+        self._start_typing(chat_id)
     
     def _start_typing(self, chat_id: str) -> None:
         """Start sending 'typing...' indicator for a chat."""
