@@ -20,12 +20,15 @@ class ContextBuilder:
     history into a coherent, cacheable context for the LLM.
     
     LOOM Sections (in order, optimized for prefix caching):
-    - foundation: Core identity, rarely changes
-    - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.)
-    - topic: Memory context (changes daily)
-    - convo: Skills summary
-    - step: Session info (channel, chat_id)
+    - foundation: Core identity, rarely changes (CACHED)
+    - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) (CACHED)
+    - topic: Skills summary, stable per workspace (CACHED)
+    - convo: Memory context, changes daily but stable within session
+    - step: Session info (channel, chat_id), changes per conversation
     - attention: (reserved for future use)
+    
+    Cache breakpoints are set after 'foundation' and 'topic' for optimal
+    Anthropic prompt caching — the stable prefix is cached, reducing costs by ~90%.
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -74,21 +77,13 @@ class ContextBuilder:
                     name=filename,
                 ))
         
-        # Topic: Memory context (changes daily)
-        memory_content = self.memory.get_memory_context()
-        if memory_content:
-            ctx.topic.add(StringEntry(
-                memory_content,
-                name="Memory",
-            ))
-        
-        # Convo: Skills (available tools)
+        # Topic: Skills (stable per workspace, rarely change) — CACHED
         # Always-loaded skills get full content
         always_skills = self.skills.get_always_skills()
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
             if always_content:
-                ctx.convo.add(StringEntry(
+                ctx.topic.add(StringEntry(
                     always_content,
                     name="Active Skills",
                 ))
@@ -96,12 +91,20 @@ class ContextBuilder:
         # Available skills summary
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:
-            ctx.convo.add(StringEntry(
+            ctx.topic.add(StringEntry(
                 f"""The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
 Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
 
 {skills_summary}""",
                 name="Skills",
+            ))
+        
+        # Convo: Memory context (changes daily, but stable within session)
+        memory_content = self.memory.get_memory_context()
+        if memory_content:
+            ctx.convo.add(StringEntry(
+                memory_content,
+                name="Memory",
             ))
         
         # Step: Session info (changes per conversation)
