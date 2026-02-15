@@ -211,6 +211,22 @@ class AgentLoop:
                 model=self.model
             )
             
+            # Log usage statistics (including cache hits)
+            if response.usage:
+                usage = response.usage
+                cache_read = usage.get("cache_read_input_tokens", 0)
+                cache_write = usage.get("cache_creation_input_tokens", 0)
+                prompt = usage.get("prompt_tokens", 0)
+                completion = usage.get("completion_tokens", 0)
+                
+                if cache_read or cache_write:
+                    logger.info(
+                        f"Usage: {prompt} prompt, {completion} completion | "
+                        f"Cache: {cache_read} read, {cache_write} written"
+                    )
+                else:
+                    logger.debug(f"Usage: {prompt} prompt, {completion} completion")
+            
             # Handle tool calls
             if response.has_tool_calls:
                 # Add assistant message with tool calls
@@ -318,6 +334,22 @@ class AgentLoop:
                 tools=self.tools.get_definitions(),
                 model=self.model
             )
+            
+            # Log usage statistics (including cache hits)
+            if response.usage:
+                usage = response.usage
+                cache_read = usage.get("cache_read_input_tokens", 0)
+                cache_write = usage.get("cache_creation_input_tokens", 0)
+                prompt = usage.get("prompt_tokens", 0)
+                completion = usage.get("completion_tokens", 0)
+                
+                if cache_read or cache_write:
+                    logger.info(
+                        f"Usage: {prompt} prompt, {completion} completion | "
+                        f"Cache: {cache_read} read, {cache_write} written"
+                    )
+                else:
+                    logger.debug(f"Usage: {prompt} prompt, {completion} completion")
             
             if response.has_tool_calls:
                 tool_call_dicts = [

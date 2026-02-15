@@ -19,6 +19,7 @@ classifiers = [
 dependencies = [
     "typer>=0.23.0",
     "litellm>=1.81.10",
+    "context-loom @ git+ssh://git@github.com/outfox/loom.git@initial-structure",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
     "websockets>=12.0",
@@ -50,6 +51,9 @@ nanobot = "nanobot.cli.commands:app"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["nanobot"]

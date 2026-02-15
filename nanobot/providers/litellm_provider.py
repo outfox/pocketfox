@@ -183,6 +183,11 @@ class LiteLLMProvider(LLMProvider):
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
+            # Anthropic cache statistics (if available)
+            if hasattr(response.usage, "cache_creation_input_tokens"):
+                usage["cache_creation_input_tokens"] = response.usage.cache_creation_input_tokens
+            if hasattr(response.usage, "cache_read_input_tokens"):
+                usage["cache_read_input_tokens"] = response.usage.cache_read_input_tokens
         
         reasoning_content = getattr(message, "reasoning_content", None)
         
