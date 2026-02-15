@@ -1,10 +1,12 @@
-"""Context builder for assembling agent prompts."""
+"""Context builder for assembling agent prompts using LOOM."""
 
 import base64
 import mimetypes
 import platform
 from pathlib import Path
 from typing import Any, ClassVar
+
+from loom import Context, StringEntry, FileEntry
 
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.skills import SkillsLoader
@@ -14,8 +16,16 @@ class ContextBuilder:
     """
     Builds the context (system prompt + messages) for the agent.
     
-    Assembles bootstrap files, memory, skills, and conversation history
-    into a coherent prompt for the LLM.
+    Uses LOOM to assemble bootstrap files, memory, skills, and conversation
+    history into a coherent, cacheable context for the LLM.
+    
+    LOOM Sections (in order, optimized for prefix caching):
+    - foundation: Core identity, rarely changes
+    - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.)
+    - topic: Memory context (changes daily)
+    - convo: Skills summary
+    - step: Session info (channel, chat_id)
+    - attention: (reserved for future use)
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -32,50 +42,101 @@ class ContextBuilder:
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
     
-    def build_system_prompt(self, skill_names: list[str] | None = None) -> str:
+    def build_context(
+        self,
+        channel: str | None = None,
+        chat_id: str | None = None,
+    ) -> Context:
         """
-        Build the system prompt from bootstrap files, memory, and skills.
+        Build a LOOM Context with all sections populated.
         
         Args:
-            skill_names: Optional list of skills to include.
+            channel: Current channel (telegram, feishu, etc.).
+            chat_id: Current chat/user ID.
         
         Returns:
-            Complete system prompt.
+            A LOOM Context ready for rendering.
         """
-        parts = []
+        ctx = Context("agent")
         
-        # Core identity
-        parts.append(self._get_identity())
+        # Foundation: Core identity (rarely changes)
+        ctx.foundation.add(StringEntry(
+            self._get_identity(),
+            name="identity",
+        ))
         
-        # Bootstrap files
-        bootstrap = self._load_bootstrap_files()
-        if bootstrap:
-            parts.append(bootstrap)
+        # Focus: Bootstrap files (stable per workspace)
+        for filename in self.BOOTSTRAP_FILES:
+            file_path = self.workspace / filename
+            if file_path.exists():
+                ctx.focus.add(FileEntry(
+                    file_path,
+                    name=filename,
+                    header=f"## {filename}",
+                ))
         
-        # Memory context
-        memory = self.memory.get_memory_context()
-        if memory:
-            parts.append(f"# Memory\n\n{memory}")
+        # Topic: Memory context (changes daily)
+        memory_content = self.memory.get_memory_context()
+        if memory_content:
+            ctx.topic.add(StringEntry(
+                memory_content,
+                name="memory",
+                header="# Memory",
+            ))
         
-        # Skills - progressive loading
-        # 1. Always-loaded skills: include full content
+        # Convo: Skills (available tools)
+        # Always-loaded skills get full content
         always_skills = self.skills.get_always_skills()
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
             if always_content:
-                parts.append(f"# Active Skills\n\n{always_content}")
+                ctx.convo.add(StringEntry(
+                    always_content,
+                    name="active_skills",
+                    header="# Active Skills",
+                ))
         
-        # 2. Available skills: only show summary (agent uses read_file to load)
+        # Available skills summary
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:
-            parts.append(f"""# Skills
-
-The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
+            ctx.convo.add(StringEntry(
+                f"""The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
 Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
 
-{skills_summary}""")
+{skills_summary}""",
+                name="skills_summary",
+                header="# Skills",
+            ))
         
-        return "\n\n---\n\n".join(parts)
+        # Step: Session info (changes per conversation)
+        if channel and chat_id:
+            ctx.step.add(StringEntry(
+                f"Channel: {channel}\nChat ID: {chat_id}",
+                name="session",
+                header="## Current Session",
+            ))
+        
+        return ctx
+    
+    def build_system_prompt(
+        self,
+        skill_names: list[str] | None = None,
+        channel: str | None = None,
+        chat_id: str | None = None,
+    ) -> str:
+        """
+        Build the system prompt from LOOM context.
+        
+        Args:
+            skill_names: Optional list of skills to include (unused, for API compat).
+            channel: Current channel.
+            chat_id: Current chat/user ID.
+        
+        Returns:
+            Complete system prompt as string.
+        """
+        ctx = self.build_context(channel=channel, chat_id=chat_id)
+        return ctx.render()
     
     def _get_identity(self) -> str:
         """Get the core identity section."""
@@ -113,18 +174,6 @@ For normal conversation, just respond with text - do not call the message tool.
 Always be helpful, accurate, and concise. When using tools, explain what you're doing.
 When remembering something, write to {workspace_path}/memory/MEMORY.md"""
     
-    def _load_bootstrap_files(self) -> str:
-        """Load all bootstrap files from workspace."""
-        parts = []
-        
-        for filename in self.BOOTSTRAP_FILES:
-            file_path = self.workspace / filename
-            if file_path.exists():
-                content = file_path.read_text(encoding="utf-8")
-                parts.append(f"## {filename}\n\n{content}")
-        
-        return "\n\n".join(parts) if parts else ""
-    
     def build_messages(
         self,
         history: list[dict[str, Any]],
@@ -148,15 +197,14 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         Returns:
             List of messages including system prompt.
         """
-        messages = []
-
-        # System prompt
-        system_prompt = self.build_system_prompt(skill_names)
-        if channel and chat_id:
-            system_prompt += f"\n\n## Current Session\nChannel: {channel}\nChat ID: {chat_id}"
-        messages.append({"role": "system", "content": system_prompt})
-
-        # History
+        # Build context and get messages with cache breakpoints
+        # Anthropic allows up to 4 breakpoints - we use 2 for system prompt:
+        # - foundation: Core identity, rarely changes
+        # - topic: Memory context, changes daily but stable within session
+        ctx = self.build_context(channel=channel, chat_id=chat_id)
+        messages = ctx.to_messages(cache_breakpoints=["foundation", "topic"])
+        
+        # Add history
         messages.extend(history)
 
         # Current message (with optional image attachments)
