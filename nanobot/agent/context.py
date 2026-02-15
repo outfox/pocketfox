@@ -72,7 +72,6 @@ class ContextBuilder:
                 ctx.focus.add(FileEntry(
                     file_path,
                     name=filename,
-                    header=f"## {filename}",
                 ))
         
         # Topic: Memory context (changes daily)
@@ -80,8 +79,7 @@ class ContextBuilder:
         if memory_content:
             ctx.topic.add(StringEntry(
                 memory_content,
-                name="memory",
-                header="# Memory",
+                name="Memory",
             ))
         
         # Convo: Skills (available tools)
@@ -92,8 +90,7 @@ class ContextBuilder:
             if always_content:
                 ctx.convo.add(StringEntry(
                     always_content,
-                    name="active_skills",
-                    header="# Active Skills",
+                    name="Active Skills",
                 ))
         
         # Available skills summary
@@ -104,16 +101,14 @@ class ContextBuilder:
 Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
 
 {skills_summary}""",
-                name="skills_summary",
-                header="# Skills",
+                name="Skills",
             ))
         
         # Step: Session info (changes per conversation)
         if channel and chat_id:
             ctx.step.add(StringEntry(
                 f"Channel: {channel}\nChat ID: {chat_id}",
-                name="session",
-                header="## Current Session",
+                name="Current Session",
             ))
         
         return ctx
