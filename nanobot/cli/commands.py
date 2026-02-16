@@ -428,10 +428,10 @@ def gateway(
             await heartbeat.start()
             
             # Run until shutdown signal
-            main_task = asyncio.create_task(asyncio.gather(
+            main_task = asyncio.gather(
                 agent.run(),
                 channels.start_all(),
-            ))
+            )
             shutdown_task = asyncio.create_task(shutdown_event.wait())
             
             done, pending = await asyncio.wait(
