@@ -272,12 +272,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             clear_volatile=False,  # We'll handle step/attention separately
         )
         
-        # Add history with cache breakpoint on second-to-last user message
+        # Add history with cache breakpoint on the LAST message
         # This allows Anthropic to cache the entire conversation prefix
         if history:
-            # Find the index of the second-to-last user message
-            user_indices = [i for i, msg in enumerate(history) if msg.get("role") == "user"]
-            breakpoint_idx = user_indices[-1] if len(user_indices) >= 1 else -1
+            breakpoint_idx = len(history) - 1
             
             for i, msg in enumerate(history):
                 if i == breakpoint_idx:
