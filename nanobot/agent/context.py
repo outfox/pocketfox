@@ -20,15 +20,19 @@ class ContextBuilder:
     history into a coherent, cacheable context for the LLM.
     
     LOOM Sections (in order, optimized for prefix caching):
-    - foundation: Core identity, rarely changes (CACHED)
-    - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) (CACHED)
-    - topic: Skills summary, stable per workspace (CACHED)
-    - convo: Memory context, changes daily but stable within session
+    - foundation: Core identity (runtime info, current time)
+    - focus: Bootstrap files (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md)
+      — large stable block (~12k tokens), cached for prefix reuse (CACHE BREAKPOINT)
+    - topic: Skills summary, stable per workspace
+    - convo: Memory context (MEMORY.md, daily notes, session history)
+      — grows but prefix stays stable within session (CACHE BREAKPOINT)
     - step: Session info (channel, chat_id), changes per conversation
     - attention: (reserved for future use)
     
-    Cache breakpoints are set after 'foundation' and 'topic' for optimal
-    Anthropic prompt caching — the stable prefix is cached, reducing costs by ~90%.
+    Cache breakpoints are set after 'focus' and 'convo' for optimal Anthropic
+    prompt caching. The large bootstrap files in 'focus' are cached first,
+    then the memory/conversation prefix in 'convo'. This reduces costs by ~90%
+    for the stable portions of the context.
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
