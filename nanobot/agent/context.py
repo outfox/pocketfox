@@ -51,24 +51,27 @@ class ContextBuilder:
     history into a coherent, cacheable context for the LLM.
     
     LOOM Sections (in order, optimized for prefix caching):
-    - foundation: Core identity (runtime info) — stable, no volatile data
-    - focus: Bootstrap files (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md)
-      — large stable block (~12k tokens), cached for prefix reuse (CACHE BREAKPOINT)
-    - topic: Skills summary, stable per workspace
-    - convo: Memory context (MEMORY.md, daily notes, session history)
-      — grows but prefix stays stable within session (CACHE BREAKPOINT)
-    - step: Session info (channel, chat_id) — stable within a session (CACHE BREAKPOINT)
-    - attention: Volatile data (current time via DateTimeEntry) — placed AFTER all
-      cache breakpoints to avoid invalidating the cached prefix
+    - foundation: Core identity, bootstrap files (AGENTS.md, SOUL.md, etc.),
+      and long-term memory (MEMORY.md) — large stable block, changes rarely
+      (CACHE BREAKPOINT after this section)
+    - focus: Skills summary — stable per workspace
+    - topic: Session-specific context (daily notes, group memory files)
+    - convo: Session memory prefix — the conversation history is appended as
+      separate user/assistant messages AFTER the system prompt, but Anthropic
+      caches message prefixes automatically (CACHE BREAKPOINT after this section)
+    - step: Current session info (channel, chat_id) — stable within a session
+      (CACHE BREAKPOINT after this section)
+    - attention: Volatile data (current time via DateTimeEntry) — placed AFTER
+      all cache breakpoints to avoid invalidating the cached prefix
     
-    Cache breakpoints are set after 'focus', 'convo', and 'step' for optimal Anthropic
-    prompt caching. The large bootstrap files in 'focus' are cached first (~12k tokens),
-    then the memory/conversation prefix in 'convo', then session info in 'step'.
-    The volatile DateTimeEntry is placed in 'attention' (after all breakpoints) to
-    avoid cache invalidation. This reduces costs by ~90% for the stable portions.
+    Cache breakpoints are set after 'foundation', 'convo', and 'step' for optimal
+    Anthropic prompt caching. The large bootstrap files and MEMORY.md in 'foundation'
+    are cached first (~15k+ tokens), then session context in 'convo', then session
+    info in 'step'. The volatile DateTimeEntry is placed in 'attention' (after all
+    breakpoints) to avoid cache invalidation.
     
     Note: Conversation history (user/assistant messages) is added AFTER the system
-    prompt via build_messages(). Anthropic can cache these as a separate prefix.
+    prompt via build_messages(). Anthropic caches message prefixes automatically.
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -102,28 +105,37 @@ class ContextBuilder:
         """
         ctx = Context("agent")
         
-        # Foundation: Core identity (rarely changes)
+        # Foundation: Core identity + bootstrap files + long-term memory
+        # This is the largest stable block — changes rarely (CACHE BREAKPOINT)
         ctx.foundation.add(StringEntry(
             self._get_identity(),
             name="identity",
         ))
         
-        # Focus: Bootstrap files (stable per workspace)
+        # Bootstrap files (AGENTS.md, SOUL.md, etc.) — part of foundation
         for filename in self.BOOTSTRAP_FILES:
             file_path = self.workspace / filename
             if file_path.exists():
-                ctx.focus.add(FileEntry(
+                ctx.foundation.add(FileEntry(
                     file_path,
                     name=filename,
                 ))
         
-        # Topic: Skills (stable per workspace, rarely change) — CACHED
+        # Long-term memory (MEMORY.md) — part of foundation, changes slowly
+        long_term_memory = self.memory.get_long_term_memory()
+        if long_term_memory:
+            ctx.foundation.add(StringEntry(
+                long_term_memory,
+                name="Long-term Memory",
+            ))
+        
+        # Focus: Skills (stable per workspace, rarely change)
         # Always-loaded skills get full content
         always_skills = self.skills.get_always_skills()
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
             if always_content:
-                ctx.topic.add(StringEntry(
+                ctx.focus.add(StringEntry(
                     always_content,
                     name="Active Skills",
                 ))
@@ -131,7 +143,7 @@ class ContextBuilder:
         # Available skills summary
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:
-            ctx.topic.add(StringEntry(
+            ctx.focus.add(StringEntry(
                 f"""The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
 Skills with available="false" need dependencies installed first - you can try installing them with apt/brew.
 
@@ -139,13 +151,15 @@ Skills with available="false" need dependencies installed first - you can try in
                 name="Skills",
             ))
         
-        # Convo: Memory context (changes daily, but stable within session)
-        memory_content = self.memory.get_memory_context()
-        if memory_content:
-            ctx.convo.add(StringEntry(
-                memory_content,
-                name="Memory",
+        # Topic: Session-specific memory (daily notes, group memory)
+        session_memory = self.memory.get_session_memory()
+        if session_memory:
+            ctx.topic.add(StringEntry(
+                session_memory,
+                name="Today's Notes",
             ))
+        
+        # Convo: Session memory prefix (conversation history added separately)
         
         # Step: Session info (changes per conversation, but stable within session)
         if channel and chat_id:
@@ -238,11 +252,12 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             List of messages including system prompt.
         """
         # Build context and get messages with cache breakpoints
-        # Anthropic allows up to 4 breakpoints - we use 2 for system prompt:
-        # - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) - large stable block (~12k tokens)
-        # - convo: Memory context - grows but prefix stays stable within session
+        # Anthropic allows up to 4 breakpoints - we use 3 for system prompt:
+        # - foundation: Bootstrap files + MEMORY.md - large stable block (~15k+ tokens)
+        # - convo: Session memory prefix - stable within session
+        # - step: Session info (channel, chat_id) - stable within session
         ctx = self.build_context(channel=channel, chat_id=chat_id)
-        messages = ctx.to_messages(cache_breakpoints=["focus", "convo", "step"])
+        messages = ctx.to_messages(cache_breakpoints=["foundation", "convo", "step"])
         
         # Add history
         messages.extend(history)
