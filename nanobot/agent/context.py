@@ -50,28 +50,32 @@ class ContextBuilder:
     Uses LOOM to assemble bootstrap files, memory, skills, and conversation
     history into a coherent, cacheable context for the LLM.
     
-    LOOM Sections (in order, optimized for prefix caching):
+    Message Structure (optimized for Anthropic prefix caching):
+    
+    [SYSTEM: foundation - focus - topic]     ← CACHE BREAKPOINT after topic
+    [user msg 1]
+    [assistant msg 1]
+    [user msg 2]
+    ...
+    [last history user msg]                  ← CACHE BREAKPOINT (grows with convo)
+    [current user msg + attention + step]    ← volatile, never cached
+    
+    LOOM Sections:
     - foundation: Core identity, bootstrap files (AGENTS.md, SOUL.md, etc.),
-      and long-term memory (MEMORY.md) — large stable block, changes rarely
-      (CACHE BREAKPOINT after this section)
+      and long-term memory (MEMORY.md) — large stable block (~15k+ tokens)
     - focus: Skills summary — stable per workspace
-    - topic: Session-specific context (daily notes, group memory files)
-    - convo: Session memory prefix — the conversation history is appended as
-      separate user/assistant messages AFTER the system prompt, but Anthropic
-      caches message prefixes automatically (CACHE BREAKPOINT after this section)
-    - step: Current session info (channel, chat_id) — stable within a session
-      (CACHE BREAKPOINT after this section)
-    - attention: Volatile data (current time via DateTimeEntry) — placed AFTER
-      all cache breakpoints to avoid invalidating the cached prefix
+    - topic: Session-specific context (daily notes, group memory)
+      (CACHE BREAKPOINT after topic — caches entire system prompt)
+    - convo: NOT used in system prompt — conversation history is added as
+      separate user/assistant messages with a cache breakpoint on the last
+      history message, allowing the cached prefix to grow with the conversation
+    - step: Session info (channel, chat_id) — appended to current user message
+    - attention: Volatile data (current time) — appended to current user message
     
-    Cache breakpoints are set after 'foundation', 'convo', and 'step' for optimal
-    Anthropic prompt caching. The large bootstrap files and MEMORY.md in 'foundation'
-    are cached first (~15k+ tokens), then session context in 'convo', then session
-    info in 'step'. The volatile DateTimeEntry is placed in 'attention' (after all
-    breakpoints) to avoid cache invalidation.
-    
-    Note: Conversation history (user/assistant messages) is added AFTER the system
-    prompt via build_messages(). Anthropic caches message prefixes automatically.
+    This structure ensures:
+    1. System prompt (~20k tokens) is cached on first request
+    2. Conversation history is cached incrementally as it grows
+    3. Only the current user message + volatile data is uncached
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -240,6 +244,12 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         """
         Build the complete message list for an LLM call.
 
+        Structure (optimized for Anthropic prompt caching):
+        [SYSTEM: foundation - focus - topic] ← cache breakpoint after topic
+        [history user/assistant messages]    ← cache breakpoint on second-to-last
+        [current user message + attention]   ← volatile (datetime etc.)
+        [step]                               ← volatile (tool outputs etc.)
+
         Args:
             history: Previous conversation messages.
             current_message: The new user message.
@@ -251,22 +261,86 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         Returns:
             List of messages including system prompt.
         """
-        # Build context and get messages with cache breakpoints
-        # Anthropic allows up to 4 breakpoints - we use 3 for system prompt:
-        # - foundation: Bootstrap files + MEMORY.md - large stable block (~15k+ tokens)
-        # - convo: Session memory prefix - stable within session
-        # - step: Session info (channel, chat_id) - stable within session
         ctx = self.build_context(channel=channel, chat_id=chat_id)
-        messages = ctx.to_messages(cache_breakpoints=["foundation", "convo", "step"])
         
-        # Add history
-        messages.extend(history)
+        # System prompt: foundation, focus, topic only (stable parts)
+        # Cache breakpoint after topic - this caches the entire system prompt
+        messages = ctx.to_messages(
+            cache_breakpoints=["topic"],
+            clear_volatile=False,  # We'll handle step/attention separately
+        )
+        
+        # Add history with cache breakpoint on second-to-last user message
+        # This allows Anthropic to cache the entire conversation prefix
+        if history:
+            # Find the index of the second-to-last user message
+            user_indices = [i for i, msg in enumerate(history) if msg.get("role") == "user"]
+            breakpoint_idx = user_indices[-1] if len(user_indices) >= 1 else -1
+            
+            for i, msg in enumerate(history):
+                if i == breakpoint_idx:
+                    # Add cache breakpoint to this message
+                    content = msg.get("content", "")
+                    if isinstance(content, str):
+                        messages.append({
+                            "role": msg["role"],
+                            "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
+                        })
+                    else:
+                        # Already a list (e.g., with images), add cache_control to last text block
+                        content_copy = list(content)
+                        for j in range(len(content_copy) - 1, -1, -1):
+                            if content_copy[j].get("type") == "text":
+                                content_copy[j] = {**content_copy[j], "cache_control": {"type": "ephemeral"}}
+                                break
+                        messages.append({"role": msg["role"], "content": content_copy})
+                else:
+                    messages.append(msg)
 
-        # Current message (with optional image attachments)
+        # Build current user message with attention (volatile datetime) appended
+        attention_content = self._compile_attention(ctx)
         user_content = self._build_user_content(current_message, media)
-        messages.append({"role": "user", "content": user_content})
+        
+        # Combine user content with attention
+        if isinstance(user_content, str):
+            if attention_content:
+                user_content = f"{user_content}\n\n{attention_content}"
+            messages.append({"role": "user", "content": user_content})
+        else:
+            # user_content is a list (has images)
+            if attention_content:
+                user_content.append({"type": "text", "text": f"\n\n{attention_content}"})
+            messages.append({"role": "user", "content": user_content})
+        
+        # Step content (tool outputs, session info) appended after user message
+        step_content = self._compile_step(ctx)
+        if step_content:
+            # Append step as additional context in the user message
+            # This keeps it after attention but before assistant response
+            last_msg = messages[-1]
+            if isinstance(last_msg["content"], str):
+                last_msg["content"] = f"{last_msg['content']}\n\n{step_content}"
+            else:
+                last_msg["content"].append({"type": "text", "text": f"\n\n{step_content}"})
+        
+        # Clear volatile sections now that we've used them
+        ctx.step.clear()
 
         return messages
+    
+    def _compile_attention(self, ctx: Context) -> str:
+        """Compile the attention section (volatile datetime etc.)."""
+        seen: set[str] = set()
+        parts = []
+        if content := ctx.attention.compile(seen):
+            parts.append(content)
+        return "\n\n".join(parts) if parts else ""
+    
+    def _compile_step(self, ctx: Context) -> str:
+        """Compile the step section (session info, tool outputs)."""
+        if content := ctx.step.compile():
+            return content
+        return ""
 
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
         """Build user message content with optional base64-encoded images."""
