@@ -408,15 +408,42 @@ def gateway(
     console.print(f"[green]✓[/green] Heartbeat: every 30m")
     
     async def run():
+        loop = asyncio.get_running_loop()
+        shutdown_event = asyncio.Event()
+        
+        def _signal_handler():
+            console.print("\nShutting down...")
+            shutdown_event.set()
+        
+        # Handle both SIGTERM (Docker) and SIGINT (Ctrl+C)
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            loop.add_signal_handler(sig, _signal_handler)
+        
         try:
             await cron.start()
             await heartbeat.start()
-            await asyncio.gather(
+            
+            # Run until shutdown signal
+            main_task = asyncio.create_task(asyncio.gather(
                 agent.run(),
                 channels.start_all(),
+            ))
+            shutdown_task = asyncio.create_task(shutdown_event.wait())
+            
+            done, pending = await asyncio.wait(
+                [main_task, shutdown_task],
+                return_when=asyncio.FIRST_COMPLETED,
             )
-        except KeyboardInterrupt:
-            console.print("\nShutting down...")
+            
+            # Cancel pending tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        finally:
+            # Cleanup
             heartbeat.stop()
             cron.stop()
             agent.stop()
