@@ -435,6 +435,17 @@ def gateway(
                 return_when=asyncio.FIRST_COMPLETED,
             )
             
+            # Surface exceptions from completed tasks before cancelling pending
+            for task in done:
+                try:
+                    task.result()
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    import logging
+                    logger = logging.getLogger("nanobot.gateway")
+                    logger.exception("Task failed with exception")
+            
             # Cancel pending tasks
             for task in pending:
                 task.cancel()
