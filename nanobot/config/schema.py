@@ -124,8 +124,15 @@ class WebToolsConfig(BaseModel):
 
 
 class ExecToolConfig(BaseModel):
-    """Shell exec tool configuration."""
+    """Shell exec tool configuration.
+    
+    When sandbox_dir is set, commands run inside a bubblewrap (bwrap) sandbox
+    with only the specified directory visible as /workspace. This prevents
+    access to credentials, prompt files, and system configs.
+    """
     timeout: int = 60
+    sandbox_dir: str | None = None  # If set, run commands in bwrap sandbox
+    sandbox_readonly_paths: list[str] = Field(default_factory=list)  # Additional read-only mounts
 
 
 class VoiceToolConfig(BaseModel):
