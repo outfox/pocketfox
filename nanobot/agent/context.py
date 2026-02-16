@@ -197,10 +197,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         """
         # Build context and get messages with cache breakpoints
         # Anthropic allows up to 4 breakpoints - we use 2 for system prompt:
-        # - foundation: Core identity, rarely changes
-        # - topic: Memory context, changes daily but stable within session
+        # - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) - large stable block (~12k tokens)
+        # - convo: Memory context - grows but prefix stays stable within session
         ctx = self.build_context(channel=channel, chat_id=chat_id)
-        messages = ctx.to_messages(cache_breakpoints=["foundation", "topic"])
+        messages = ctx.to_messages(cache_breakpoints=["focus", "convo"])
         
         # Add history
         messages.extend(history)
