@@ -92,6 +92,8 @@ class AgentLoop:
             working_dir=str(self.workspace),
             timeout=self.exec_config.timeout,
             restrict_to_workspace=self.restrict_to_workspace,
+            sandbox_dir=self.exec_config.sandbox_dir,
+            sandbox_readonly_paths=self.exec_config.sandbox_readonly_paths,
         ))
         
         # Web tools
