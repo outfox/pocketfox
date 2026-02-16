@@ -76,6 +76,11 @@ class ContextBuilder:
     1. System prompt (~20k tokens) is cached on first request
     2. Conversation history is cached incrementally as it grows
     3. Only the current user message + volatile data is uncached
+    
+    Persistent Context:
+    The ContextBuilder maintains a persistent LOOM Context that survives
+    across message processing. Use add_entry() and remove_entry() to
+    dynamically modify the context at runtime.
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -91,32 +96,31 @@ class ContextBuilder:
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
+        self._context: Context | None = None
+        self._entry_counter: int = 0
     
-    def build_context(
-        self,
-        channel: str | None = None,
-        chat_id: str | None = None,
-    ) -> Context:
+    @property
+    def context(self) -> Context:
         """
-        Build a LOOM Context with all sections populated.
-        
-        Args:
-            channel: Current channel (telegram, feishu, etc.).
-            chat_id: Current chat/user ID.
+        Get the persistent LOOM Context, creating it if needed.
         
         Returns:
-            A LOOM Context ready for rendering.
+            The persistent Context instance.
         """
+        if self._context is None:
+            self._context = self._create_context()
+        return self._context
+    
+    def _create_context(self) -> Context:
+        """Create a new LOOM Context with all static sections populated."""
         ctx = Context("agent")
         
         # Foundation: Core identity + bootstrap files + long-term memory
-        # This is the largest stable block — changes rarely (CACHE BREAKPOINT)
         ctx.foundation.add(StringEntry(
             self._get_identity(),
             name="identity",
         ))
         
-        # Bootstrap files (AGENTS.md, SOUL.md, etc.) — part of foundation
         for filename in self.BOOTSTRAP_FILES:
             file_path = self.workspace / filename
             if file_path.exists():
@@ -125,7 +129,6 @@ class ContextBuilder:
                     name=filename,
                 ))
         
-        # Long-term memory (MEMORY.md) — part of foundation, changes slowly
         long_term_memory = self.memory.get_long_term_memory()
         if long_term_memory:
             ctx.foundation.add(StringEntry(
@@ -133,8 +136,7 @@ class ContextBuilder:
                 name="Long-term Memory",
             ))
         
-        # Focus: Skills (stable per workspace, rarely change)
-        # Always-loaded skills get full content
+        # Focus: Skills
         always_skills = self.skills.get_always_skills()
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
@@ -144,7 +146,6 @@ class ContextBuilder:
                     name="Active Skills",
                 ))
         
-        # Available skills summary
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:
             ctx.focus.add(StringEntry(
@@ -155,7 +156,7 @@ Skills with available="false" need dependencies installed first - you can try in
                 name="Skills",
             ))
         
-        # Topic: Session-specific memory (daily notes, group memory)
+        # Topic: Session-specific memory (daily notes)
         session_memory = self.memory.get_session_memory()
         if session_memory:
             ctx.topic.add(StringEntry(
@@ -163,20 +164,122 @@ Skills with available="false" need dependencies installed first - you can try in
                 name="Today's Notes",
             ))
         
-        # Session info (stable within a conversation)
+        # Attention: Volatile data (current time)
+        ctx.attention.add(DateTimeEntry(name="Current Time"))
+        
+        return ctx
+    
+    def add_entry(
+        self,
+        section: str,
+        content: str,
+        name: str | None = None,
+    ) -> str:
+        """
+        Add an entry to a section of the persistent context.
+        
+        Args:
+            section: Section name (foundation, focus, topic, step, attention).
+            content: The text content to add.
+            name: Optional name for the entry.
+        
+        Returns:
+            The entry ID (for later removal).
+        
+        Raises:
+            ValueError: If section name is invalid.
+        """
+        ctx = self.context
+        section_obj = getattr(ctx, section, None)
+        if section_obj is None:
+            raise ValueError(f"Invalid section: {section}. Valid: foundation, focus, topic, step, attention")
+        
+        self._entry_counter += 1
+        entry_id = f"entry_{self._entry_counter}"
+        entry_name = name or entry_id
+        
+        entry = StringEntry(content, name=entry_name)
+        entry._runtime_id = entry_id  # Tag for later removal
+        section_obj.add(entry)
+        
+        return entry_id
+    
+    def remove_entry(self, entry_id: str) -> bool:
+        """
+        Remove an entry from the persistent context by its ID.
+        
+        Args:
+            entry_id: The entry ID returned by add_entry().
+        
+        Returns:
+            True if entry was found and removed, False otherwise.
+        """
+        ctx = self.context
+        for section_name in ("foundation", "focus", "topic", "step", "attention"):
+            section = getattr(ctx, section_name)
+            for i, entry in enumerate(section.entries):
+                if getattr(entry, "_runtime_id", None) == entry_id:
+                    section.entries.pop(i)
+                    return True
+        return False
+    
+    def list_entries(self, section: str) -> list[dict[str, str]]:
+        """
+        List all entries in a section.
+        
+        Args:
+            section: Section name.
+        
+        Returns:
+            List of dicts with 'id', 'name', and 'preview' keys.
+        """
+        ctx = self.context
+        section_obj = getattr(ctx, section, None)
+        if section_obj is None:
+            raise ValueError(f"Invalid section: {section}")
+        
+        result = []
+        for entry in section_obj.entries:
+            entry_id = getattr(entry, "_runtime_id", None)
+            compiled = entry.compile() if hasattr(entry, "compile") else str(entry)
+            preview = compiled[:100] + "..." if len(compiled) > 100 else compiled
+            result.append({
+                "id": entry_id,
+                "name": entry.name,
+                "preview": preview,
+            })
+        return result
+    
+    def build_context(
+        self,
+        channel: str | None = None,
+        chat_id: str | None = None,
+    ) -> Context:
+        """
+        Get the persistent LOOM Context, updating session info if provided.
+        
+        Args:
+            channel: Current channel (telegram, feishu, etc.).
+            chat_id: Current chat/user ID.
+        
+        Returns:
+            The persistent LOOM Context.
+        """
+        ctx = self.context
+        
+        # Update session info in topic section (remove old, add new)
+        # This is the only thing that changes per-request
         if channel and chat_id:
+            # Remove existing session entry if present
+            for i, entry in enumerate(ctx.topic.entries):
+                if entry.name == "Current Session":
+                    ctx.topic.entries.pop(i)
+                    break
+            
             ctx.topic.add(StringEntry(
                 f"Channel: {channel}\nChat ID: {chat_id}",
                 name="Current Session",
             ))
-        
-        # Convo: NOT used in system prompt — history added as separate messages
-        
-        # Step: Reserved for tool outputs (future use)
-        
-        # Attention: Volatile data (current time) — placed AFTER step cache breakpoint
-        # to avoid invalidating the cached prefix
-        ctx.attention.add(DateTimeEntry(name="Current Time"))
         
         return ctx
     
