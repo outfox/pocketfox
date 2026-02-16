@@ -163,14 +163,16 @@ Skills with available="false" need dependencies installed first - you can try in
                 name="Today's Notes",
             ))
         
-        # Convo: Session memory prefix (conversation history added separately)
-        
-        # Step: Session info (changes per conversation, but stable within session)
+        # Session info (stable within a conversation)
         if channel and chat_id:
-            ctx.step.add(StringEntry(
+            ctx.topic.add(StringEntry(
                 f"Channel: {channel}\nChat ID: {chat_id}",
                 name="Current Session",
             ))
+        
+        # Convo: NOT used in system prompt — history added as separate messages
+        
+        # Step: Reserved for tool outputs (future use)
         
         # Attention: Volatile data (current time) — placed AFTER step cache breakpoint
         # to avoid invalidating the cached prefix
