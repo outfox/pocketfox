@@ -20,15 +20,19 @@ class ContextBuilder:
     history into a coherent, cacheable context for the LLM.
     
     LOOM Sections (in order, optimized for prefix caching):
-    - foundation: Core identity, rarely changes (CACHED)
-    - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) (CACHED)
-    - topic: Skills summary, stable per workspace (CACHED)
-    - convo: Memory context, changes daily but stable within session
+    - foundation: Core identity (runtime info, current time)
+    - focus: Bootstrap files (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md)
+      — large stable block (~12k tokens), cached for prefix reuse (CACHE BREAKPOINT)
+    - topic: Skills summary, stable per workspace
+    - convo: Memory context (MEMORY.md, daily notes, session history)
+      — grows but prefix stays stable within session (CACHE BREAKPOINT)
     - step: Session info (channel, chat_id), changes per conversation
     - attention: (reserved for future use)
     
-    Cache breakpoints are set after 'foundation' and 'topic' for optimal
-    Anthropic prompt caching — the stable prefix is cached, reducing costs by ~90%.
+    Cache breakpoints are set after 'focus' and 'convo' for optimal Anthropic
+    prompt caching. The large bootstrap files in 'focus' are cached first,
+    then the memory/conversation prefix in 'convo'. This reduces costs by ~90%
+    for the stable portions of the context.
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -197,10 +201,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         """
         # Build context and get messages with cache breakpoints
         # Anthropic allows up to 4 breakpoints - we use 2 for system prompt:
-        # - foundation: Core identity, rarely changes
-        # - topic: Memory context, changes daily but stable within session
+        # - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) - large stable block (~12k tokens)
+        # - convo: Memory context - grows but prefix stays stable within session
         ctx = self.build_context(channel=channel, chat_id=chat_id)
-        messages = ctx.to_messages(cache_breakpoints=["foundation", "topic"])
+        messages = ctx.to_messages(cache_breakpoints=["focus", "convo"])
         
         # Add history
         messages.extend(history)
