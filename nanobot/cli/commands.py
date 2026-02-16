@@ -416,8 +416,12 @@ def gateway(
             shutdown_event.set()
         
         # Handle both SIGTERM (Docker) and SIGINT (Ctrl+C)
+        # Windows does not support add_signal_handler (NotImplementedError)
         for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, _signal_handler)
+            try:
+                loop.add_signal_handler(sig, _signal_handler)
+            except NotImplementedError:
+                pass  # Windows — signal handling not supported in asyncio
         
         try:
             await cron.start()
@@ -442,8 +446,7 @@ def gateway(
                 except asyncio.CancelledError:
                     pass
                 except Exception:
-                    import logging
-                    logger = logging.getLogger("nanobot.gateway")
+                    from loguru import logger
                     logger.exception("Task failed with exception")
             
             # Cancel pending tasks
