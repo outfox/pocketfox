@@ -107,3 +107,32 @@ class MemoryStore:
             parts.append("## Today's Notes\n" + today)
         
         return "\n\n".join(parts) if parts else ""
+    
+    def get_long_term_memory(self) -> str:
+        """
+        Get long-term memory for the foundation block.
+        
+        This is MEMORY.md — changes rarely, cached aggressively.
+        
+        Returns:
+            Formatted long-term memory content.
+        """
+        long_term = self.read_long_term()
+        if long_term:
+            return "## Long-term Memory\n" + long_term
+        return ""
+    
+    def get_session_memory(self) -> str:
+        """
+        Get session-specific memory (daily notes, etc.).
+        
+        This changes more frequently than long-term memory but is
+        stable within a session.
+        
+        Returns:
+            Formatted session memory content.
+        """
+        today = self.read_today()
+        if today:
+            return "## Today's Notes\n" + today
+        return ""
