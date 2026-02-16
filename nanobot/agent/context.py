@@ -3,13 +3,44 @@
 import base64
 import mimetypes
 import platform
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from loom import Context, StringEntry, FileEntry
+from loom import Context, Entry, StringEntry, FileEntry
 
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.skills import SkillsLoader
+
+
+class DateTimeEntry(Entry):
+    """
+    A volatile entry that renders the current date/time.
+    
+    Always returns a unique identity to prevent caching — this entry
+    should be placed after all cache breakpoints to avoid invalidating
+    the cached prefix.
+    """
+    
+    def __init__(self, fmt: str = "%Y-%m-%d %H:%M (%A)", name: str | None = None):
+        """
+        Args:
+            fmt: strftime format string.
+            name: Entry name (default: "Current Time").
+        """
+        super().__init__(name or "Current Time")
+        self._fmt = fmt
+    
+    def compile(self) -> str:
+        """Compile to current timestamp."""
+        return datetime.now().strftime(self._fmt)
+    
+    def identity(self) -> str:
+        """Always unique — volatile entry, never deduplicated."""
+        return f"datetime:{id(self)}"
+    
+    def __repr__(self) -> str:
+        return f"DateTimeEntry(fmt={self._fmt!r})"
 
 
 class ContextBuilder:
@@ -20,13 +51,14 @@ class ContextBuilder:
     history into a coherent, cacheable context for the LLM.
     
     LOOM Sections (in order, optimized for prefix caching):
-    - foundation: Core identity (runtime info, current time)
+    - foundation: Core identity (runtime info) — stable, no volatile data
     - focus: Bootstrap files (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md)
       — large stable block (~12k tokens), cached for prefix reuse (CACHE BREAKPOINT)
     - topic: Skills summary, stable per workspace
     - convo: Memory context (MEMORY.md, daily notes, session history)
       — grows but prefix stays stable within session (CACHE BREAKPOINT)
-    - step: Session info (channel, chat_id), changes per conversation
+    - step: Volatile data (current time via DateTimeEntry) + session info (channel, chat_id)
+      — placed AFTER cache breakpoints to avoid invalidating cached prefix
     - attention: (reserved for future use)
     
     Cache breakpoints are set after 'focus' and 'convo' for optimal Anthropic
@@ -112,6 +144,10 @@ Skills with available="false" need dependencies installed first - you can try in
             ))
         
         # Step: Session info (changes per conversation)
+        # DateTimeEntry is volatile — placed here AFTER cache breakpoints
+        # to avoid invalidating the cached prefix
+        ctx.step.add(DateTimeEntry(name="Current Time"))
+        
         if channel and chat_id:
             ctx.step.add(StringEntry(
                 f"Channel: {channel}\nChat ID: {chat_id}",
@@ -141,9 +177,7 @@ Skills with available="false" need dependencies installed first - you can try in
         return ctx.render()
     
     def _get_identity(self) -> str:
-        """Get the core identity section."""
-        from datetime import datetime
-        now = datetime.now().strftime("%Y-%m-%d %H:%M (%A)")
+        """Get the core identity section (stable, no volatile data)."""
         workspace_path = str(self.workspace.expanduser().resolve())
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
@@ -156,9 +190,6 @@ You are nanobot, a helpful AI assistant. You have access to tools that allow you
 - Search the web and fetch web pages
 - Send messages to users on chat channels
 - Spawn subagents for complex background tasks
-
-## Current Time
-{now}
 
 ## Runtime
 {runtime}
