@@ -57,14 +57,18 @@ class ContextBuilder:
     - topic: Skills summary, stable per workspace
     - convo: Memory context (MEMORY.md, daily notes, session history)
       — grows but prefix stays stable within session (CACHE BREAKPOINT)
-    - step: Volatile data (current time via DateTimeEntry) + session info (channel, chat_id)
-      — placed AFTER cache breakpoints to avoid invalidating cached prefix
-    - attention: (reserved for future use)
+    - step: Session info (channel, chat_id) — stable within a session (CACHE BREAKPOINT)
+    - attention: Volatile data (current time via DateTimeEntry) — placed AFTER all
+      cache breakpoints to avoid invalidating the cached prefix
     
-    Cache breakpoints are set after 'focus' and 'convo' for optimal Anthropic
-    prompt caching. The large bootstrap files in 'focus' are cached first,
-    then the memory/conversation prefix in 'convo'. This reduces costs by ~90%
-    for the stable portions of the context.
+    Cache breakpoints are set after 'focus', 'convo', and 'step' for optimal Anthropic
+    prompt caching. The large bootstrap files in 'focus' are cached first (~12k tokens),
+    then the memory/conversation prefix in 'convo', then session info in 'step'.
+    The volatile DateTimeEntry is placed in 'attention' (after all breakpoints) to
+    avoid cache invalidation. This reduces costs by ~90% for the stable portions.
+    
+    Note: Conversation history (user/assistant messages) is added AFTER the system
+    prompt via build_messages(). Anthropic can cache these as a separate prefix.
     """
     
     BOOTSTRAP_FILES: ClassVar[list[str]] = [
@@ -143,16 +147,16 @@ Skills with available="false" need dependencies installed first - you can try in
                 name="Memory",
             ))
         
-        # Step: Session info (changes per conversation)
-        # DateTimeEntry is volatile — placed here AFTER cache breakpoints
-        # to avoid invalidating the cached prefix
-        ctx.step.add(DateTimeEntry(name="Current Time"))
-        
+        # Step: Session info (changes per conversation, but stable within session)
         if channel and chat_id:
             ctx.step.add(StringEntry(
                 f"Channel: {channel}\nChat ID: {chat_id}",
                 name="Current Session",
             ))
+        
+        # Attention: Volatile data (current time) — placed AFTER step cache breakpoint
+        # to avoid invalidating the cached prefix
+        ctx.attention.add(DateTimeEntry(name="Current Time"))
         
         return ctx
     
@@ -238,7 +242,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         # - focus: Bootstrap files (AGENTS.md, SOUL.md, etc.) - large stable block (~12k tokens)
         # - convo: Memory context - grows but prefix stays stable within session
         ctx = self.build_context(channel=channel, chat_id=chat_id)
-        messages = ctx.to_messages(cache_breakpoints=["focus", "convo"])
+        messages = ctx.to_messages(cache_breakpoints=["focus", "convo", "step"])
         
         # Add history
         messages.extend(history)
