@@ -37,6 +37,8 @@ services:
       - "18790:18790"
 
     # Run as non-root user (set via USER directive in Dockerfile)
+    secrets:
+      - passwd
 
   # Browserless - Headless Chrome for web automation & OAuth
   browserless:
@@ -66,3 +68,7 @@ services:
       - MODE=json-rpc  # better polling response time
     volumes:
       - ${HOME}/persistence-local/signal-cli-data:/home/.local/share/signal-cli
+
+secrets:
+  passwd:
+    file: ${HOME}/.pocketfox_passwd
