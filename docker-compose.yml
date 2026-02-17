@@ -19,13 +19,13 @@ services:
         CACHE_BUST: ${CACHE_BUST:-0}
     volumes:
       # Base workspace (personality files: SOUL.md, IDENTITY.md, memory/, skills/)
-      - ${HOME}/persistence-local/workspace:/home/pocketfox/.nanobot/workspace
+      - ${HOME}/persistence-local/workspace:/home/pocketfox/.pocketfox/workspace
       # Avatar images (cute!)
-      - ${HOME}/persistence-local/avatars:/home/pocketfox/.nanobot/workspace/avatars
+      - ${HOME}/persistence-local/avatars:/home/pocketfox/.pocketfox/workspace/avatars
       # Projects directory to allow her to work on her own code a little more persistently
-      - ${HOME}/projects:/home/pocketfox/.nanobot/workspace/projects
+      - ${HOME}/projects:/home/pocketfox/.pocketfox/workspace/projects
       # User config/credentials (in home directory, not workspace)
-      - ${HOME}/persistence-local/nanobot:/home/pocketfox/.nanobot
+      - ${HOME}/persistence-local/nanobot:/home/pocketfox/.pocketfox
       - ${HOME}/persistence-local/config:/home/pocketfox/.config
       - ${HOME}/persistence-local/claude_auth:/home/pocketfox/.claude
       - ${HOME}/.ssh:/home/pocketfox/.ssh
