@@ -180,7 +180,19 @@ write_file(
 )
 ```
 
----
+`---`
+### File Conversions
+The "convert-all" uv python tool has been installed, globally. It can be used to convert various file formats.
+Usage: `convert-all INPUT_FILE OUTPUT_FILE`
+
+Examples:
+```bash
+convert-all audio.mp3 audio.ogg
+convert-all picture.png picture.jpg
+```
+
+
+`---`
 
 ## Adding Custom Tools
 
