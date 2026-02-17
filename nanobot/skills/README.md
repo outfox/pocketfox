@@ -1,6 +1,6 @@
-# nanobot Skills
+# pocketfox Skills
 
-This directory contains built-in skills that extend nanobot's capabilities.
+This directory contains built-in skills that extend pocketfox's capabilities.
 
 ## Skill Format
 

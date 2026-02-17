@@ -1,4 +1,4 @@
-"""Logging configuration for nanobot."""
+"""Logging configuration for pocketfox."""
 
 import sys
 
@@ -7,7 +7,7 @@ from loguru import logger
 
 def configure_logging(verbose: bool = False) -> None:
     """
-    Configure loguru with nanobot's preferred format.
+    Configure loguru with pocketfox's preferred format.
     
     Args:
         verbose: If True, show DEBUG level and include source location.

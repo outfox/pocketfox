@@ -1,16 +1,16 @@
 <div align="center">
-  <img src="nanobot_logo.png" alt="nanobot" width="500">
-  <h1>nanobot: Ultra-Lightweight Personal AI Assistant</h1>
+  <img src="pocketfox-logo.svg" alt="pocketfox" width="500">
+  <h1>pocketfox: Ultra-Lightweight Personal AI Assistant</h1>
   <p>
-    <a href="https://pypi.org/project/nanobot-ai/"><img src="https://img.shields.io/pypi/v/nanobot-ai" alt="PyPI"></a>
-    <a href="https://pepy.tech/project/nanobot-ai"><img src="https://static.pepy.tech/badge/nanobot-ai" alt="Downloads"></a>
+    <a href="https://pypi.org/project/pocketfox-ai/"><img src="https://img.shields.io/pypi/v/pocketfox-ai" alt="PyPI"></a>
+    <a href="https://pepy.tech/project/pocketfox-ai"><img src="https://static.pepy.tech/badge/pocketfox-ai" alt="Downloads"></a>
     <img src="https://img.shields.io/badge/python-≥3.11-blue" alt="Python">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
    <a href="https://discord.gg/MnCvHqpUGB"><img src="https://img.shields.io/badge/Discord-Community-5865F2?style=flat&logo=discord&logoColor=white" alt="Discord"></a>
   </p>
 </div>
 
-🐈 **nanobot** is an **ultra-lightweight** personal AI assistant inspired by [Clawdbot](https://github.com/openclaw/openclaw) 
+👖🦊 **pocketfox** is an **ultra-lightweight** personal AI assistant inspired by [Clawdbot](https://github.com/openclaw/openclaw) 
 
 ⚡️ Delivers core agent functionality in just **~4,000** lines of code — **99% smaller** than Clawdbot's 430k+ lines.
 
@@ -18,15 +18,9 @@
 
 ## 📢 News
 
-- **2026-02-08** 🔧 Refactored Providers—adding a new LLM provider now takes just 2 simple steps! Check [here](#providers).
-- **2026-02-07** 🚀 Released v0.1.3.post5 with Qwen support & several key improvements! Check [here](https://github.com/HKUDS/nanobot/releases/tag/v0.1.3.post5) for details.
-- **2026-02-06** ✨ Added Moonshot/Kimi provider, Discord integration, and enhanced security hardening!
-- **2026-02-05** ✨ Added Feishu channel, DeepSeek provider, and enhanced scheduled tasks support!
-- **2026-02-04** 🚀 Released v0.1.3.post4 with multi-provider & Docker support! Check [here](https://github.com/HKUDS/nanobot/releases/tag/v0.1.3.post4) for details.
-- **2026-02-03** ⚡ Integrated vLLM for local LLM support and improved natural language task scheduling!
-- **2026-02-02** 🎉 nanobot officially launched! Welcome to try 🐈 nanobot!
+- **2026-02-17** 🔧 Official Fork named pocketfox.
 
-## Key Features of nanobot:
+## Key Features of pocketfox:
 
 🪶 **Ultra-Lightweight**: Just ~4,000 lines of core agent code — 99% smaller than Clawdbot.
 
@@ -39,7 +33,7 @@
 ## 🏗️ Architecture
 
 <p align="center">
-  <img src="nanobot_arch.png" alt="nanobot architecture" width="800">
+  <img src="pocketfox_arch.png" alt="pocketfox architecture" width="800">
 </p>
 
 ## ✨ Features
@@ -70,36 +64,36 @@
 **Install from source** (latest features, recommended for development)
 
 ```bash
-git clone https://github.com/HKUDS/nanobot.git
-cd nanobot
+git clone https://github.com/HKUDS/pocketfox.git
+cd pocketfox
 pip install -e .
 ```
 
 **Install with [uv](https://github.com/astral-sh/uv)** (stable, fast)
 
 ```bash
-uv tool install nanobot-ai
+uv tool install pocketfox-ai
 ```
 
 **Install from PyPI** (stable)
 
 ```bash
-pip install nanobot-ai
+pip install pocketfox-ai
 ```
 
 ## 🚀 Quick Start
 
 > [!TIP]
-> Set your API key in `~/.nanobot/config.toml`.
+> Set your API key in `~/.pocketfox/config.toml`.
 > Get API keys: [OpenRouter](https://openrouter.ai/keys) (Global) · [DashScope](https://dashscope.console.aliyun.com) (Qwen) · [Brave Search](https://brave.com/search/api/) (optional, for web search)
 
 **1. Initialize**
 
 ```bash
-nanobot onboard
+pocketfox onboard
 ```
 
-**2. Configure** (`~/.nanobot/config.toml`)
+**2. Configure** (`~/.pocketfox/config.toml`)
 
 For OpenRouter - recommended for global users:
 ```toml
@@ -113,14 +107,14 @@ model = "anthropic/claude-opus-4-5"
 **3. Chat**
 
 ```bash
-nanobot agent -m "What is 2+2?"
+pocketfox agent -m "What is 2+2?"
 ```
 
 That's it! You have a working AI assistant in 2 minutes.
 
 ## 🖥️ Local Models (vLLM)
 
-Run nanobot with your own local models using vLLM or any OpenAI-compatible server.
+Run pocketfox with your own local models using vLLM or any OpenAI-compatible server.
 
 **1. Start your vLLM server**
 
@@ -128,7 +122,7 @@ Run nanobot with your own local models using vLLM or any OpenAI-compatible serve
 vllm serve meta-llama/Llama-3.1-8B-Instruct --port 8000
 ```
 
-**2. Configure** (`~/.nanobot/config.toml`)
+**2. Configure** (`~/.pocketfox/config.toml`)
 
 ```toml
 [providers.vllm]
@@ -142,7 +136,7 @@ model = "meta-llama/Llama-3.1-8B-Instruct"
 **3. Chat**
 
 ```bash
-nanobot agent -m "Hello from my local LLM!"
+pocketfox agent -m "Hello from my local LLM!"
 ```
 
 > [!TIP]
@@ -150,7 +144,7 @@ nanobot agent -m "Hello from my local LLM!"
 
 ## 💬 Chat Apps
 
-Talk to your nanobot through Telegram, Discord, WhatsApp, or Feishu — anytime, anywhere.
+Talk to your pocketfox through Telegram, Discord, WhatsApp, or Feishu — anytime, anywhere.
 
 | Channel | Setup |
 |---------|-------|
@@ -182,7 +176,7 @@ allow_from = ["YOUR_USER_ID"]
 **3. Run**
 
 ```bash
-nanobot gateway
+pocketfox gateway
 ```
 
 </details>
@@ -221,7 +215,7 @@ allow_from = ["YOUR_USER_ID"]
 **6. Run**
 
 ```bash
-nanobot gateway
+pocketfox gateway
 ```
 
 </details>
@@ -234,7 +228,7 @@ Requires **Node.js ≥18**.
 **1. Link device**
 
 ```bash
-nanobot channels login
+pocketfox channels login
 # Scan QR with WhatsApp → Settings → Linked Devices
 ```
 
@@ -250,10 +244,10 @@ allow_from = ["+1234567890"]
 
 ```bash
 # Terminal 1
-nanobot channels login
+pocketfox channels login
 
 # Terminal 2
-nanobot gateway
+pocketfox gateway
 ```
 
 </details>
@@ -268,7 +262,7 @@ Uses **WebSocket** long connection — no public IP required.
 - Create a new app → Enable **Bot** capability
 - **Permissions**: Add `im:message` (send messages)
 - **Events**: Add `im.message.receive_v1` (receive messages)
-  - Select **Long Connection** mode (requires running nanobot first to establish connection)
+  - Select **Long Connection** mode (requires running pocketfox first to establish connection)
 - Get **App ID** and **App Secret** from "Credentials & Basic Info"
 - Publish the app
 
@@ -290,7 +284,7 @@ allow_from = []
 **3. Run**
 
 ```bash
-nanobot gateway
+pocketfox gateway
 ```
 
 > [!TIP]
@@ -327,7 +321,7 @@ allow_from = []
 **3. Run**
 
 ```bash
-nanobot gateway
+pocketfox gateway
 ```
 
 </details>
@@ -377,7 +371,7 @@ allow_from = ["+491111111111", "+492222222222"]
 **4. Run**
 
 ```bash
-nanobot gateway
+pocketfox gateway
 ```
 
 > [!TIP]
@@ -387,7 +381,7 @@ nanobot gateway
 
 ## ⚙️ Configuration
 
-Config file: `~/.nanobot/config.toml`
+Config file: `~/.pocketfox/config.toml`
 
 ### Providers
 
@@ -411,23 +405,23 @@ Config file: `~/.nanobot/config.toml`
 <details>
 <summary><b>Adding a New Provider (Developer Guide)</b></summary>
 
-nanobot uses a **Provider Registry** (`nanobot/providers/registry.py`) as the single source of truth.
+pocketfox uses a **Provider Registry** (`pocketfox/providers/registry.py`) as the single source of truth.
 Adding a new provider only takes **2 steps** — no if-elif chains to touch.
 
-**Step 1.** Add a `ProviderSpec` entry to `PROVIDERS` in `nanobot/providers/registry.py`:
+**Step 1.** Add a `ProviderSpec` entry to `PROVIDERS` in `pocketfox/providers/registry.py`:
 
 ```python
 ProviderSpec(
     name="myprovider",                   # config field name
     keywords=("myprovider", "mymodel"),  # model-name keywords for auto-matching
     env_key="MYPROVIDER_API_KEY",        # env var for LiteLLM
-    display_name="My Provider",          # shown in `nanobot status`
+    display_name="My Provider",          # shown in `pocketfox status`
     litellm_prefix="myprovider",         # auto-prefix: model → myprovider/model
     skip_prefixes=("myprovider/",),      # don't double-prefix
 )
 ```
 
-**Step 2.** Add a field to `ProvidersConfig` in `nanobot/config/schema.py`:
+**Step 2.** Add a field to `ProvidersConfig` in `pocketfox/config/schema.py`:
 
 ```python
 class ProvidersConfig(BaseModel):
@@ -435,7 +429,7 @@ class ProvidersConfig(BaseModel):
     myprovider: ProviderConfig = ProviderConfig()
 ```
 
-That's it! Environment variables, model prefixing, config matching, and `nanobot status` display will all work automatically.
+That's it! Environment variables, model prefixing, config matching, and `pocketfox status` display will all work automatically.
 
 **Common `ProviderSpec` options:**
 
@@ -468,27 +462,27 @@ That's it! Environment variables, model prefixing, config matching, and `nanobot
 
 | Command | Description |
 |---------|-------------|
-| `nanobot onboard` | Initialize config & workspace |
-| `nanobot agent -m "..."` | Chat with the agent |
-| `nanobot agent` | Interactive chat mode |
-| `nanobot gateway` | Start the gateway |
-| `nanobot status` | Show status |
-| `nanobot channels login` | Link WhatsApp (scan QR) |
-| `nanobot channels status` | Show channel status |
+| `pocketfox onboard` | Initialize config & workspace |
+| `pocketfox agent -m "..."` | Chat with the agent |
+| `pocketfox agent` | Interactive chat mode |
+| `pocketfox gateway` | Start the gateway |
+| `pocketfox status` | Show status |
+| `pocketfox channels login` | Link WhatsApp (scan QR) |
+| `pocketfox channels status` | Show channel status |
 
 <details>
 <summary><b>Scheduled Tasks (Cron)</b></summary>
 
 ```bash
 # Add a job
-nanobot cron add --name "daily" --message "Good morning!" --cron "0 9 * * *"
-nanobot cron add --name "hourly" --message "Check status" --every 3600
+pocketfox cron add --name "daily" --message "Good morning!" --cron "0 9 * * *"
+pocketfox cron add --name "hourly" --message "Check status" --every 3600
 
 # List jobs
-nanobot cron list
+pocketfox cron list
 
 # Remove a job
-nanobot cron remove <job_id>
+pocketfox cron remove <job_id>
 ```
 
 </details>
@@ -496,32 +490,32 @@ nanobot cron remove <job_id>
 ## 🐳 Docker
 
 > [!TIP]
-> The `-v ~/.nanobot:/root/.nanobot` flag mounts your local config directory into the container, so your config and workspace persist across container restarts.
+> The `-v ~/.pocketfox:/root/.pocketfox` flag mounts your local config directory into the container, so your config and workspace persist across container restarts.
 
-Build and run nanobot in a container:
+Build and run pocketfox in a container:
 
 ```bash
 # Build the image
-docker build -t nanobot .
+docker build -t pocketfox .
 
 # Initialize config (first time only)
-docker run -v ~/.nanobot:/root/.nanobot --rm nanobot onboard
+docker run -v ~/.pocketfox:/root/.pocketfox --rm pocketfox onboard
 
 # Edit config on host to add API keys
-vim ~/.nanobot/config.toml
+vim ~/.pocketfox/config.toml
 
 # Run gateway (connects to Telegram/WhatsApp)
-docker run -v ~/.nanobot:/root/.nanobot -p 18790:18790 nanobot gateway
+docker run -v ~/.pocketfox:/root/.pocketfox -p 18790:18790 pocketfox gateway
 
 # Or run a single command
-docker run -v ~/.nanobot:/root/.nanobot --rm nanobot agent -m "Hello!"
-docker run -v ~/.nanobot:/root/.nanobot --rm nanobot status
+docker run -v ~/.pocketfox:/root/.pocketfox --rm pocketfox agent -m "Hello!"
+docker run -v ~/.pocketfox:/root/.pocketfox --rm pocketfox status
 ```
 
 ## 📁 Project Structure
 
 ```
-nanobot/
+pocketfox/
 ├── agent/          # 🧠 Core agent logic
 │   ├── loop.py     #    Agent loop (LLM ↔ tool execution)
 │   ├── context.py  #    Prompt builder
@@ -544,7 +538,7 @@ nanobot/
 
 PRs welcome! The codebase is intentionally small and readable. 🤗
 
-**Roadmap** — Pick an item and [open a PR](https://github.com/HKUDS/nanobot/pulls)!
+**Roadmap** — Pick an item and [open a PR](https://github.com/HKUDS/pocketfox/pulls)!
 
 - [x] **Voice Transcription** — Support for Groq Whisper (Issue #13)
 - [ ] **Multi-modal** — See and hear (images, voice, video)
@@ -555,29 +549,29 @@ PRs welcome! The codebase is intentionally small and readable. 🤗
 
 ### Contributors
 
-<a href="https://github.com/HKUDS/nanobot/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=HKUDS/nanobot&max=100&columns=12" />
+<a href="https://github.com/HKUDS/pocketfox/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=HKUDS/pocketfox&max=100&columns=12" />
 </a>
 
 
 ## ⭐ Star History
 
 <div align="center">
-  <a href="https://star-history.com/#HKUDS/nanobot&Date">
+  <a href="https://star-history.com/#HKUDS/pocketfox&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/nanobot&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/nanobot&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/nanobot&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/pocketfox&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/pocketfox&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/pocketfox&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
     </picture>
   </a>
 </div>
 
 <p align="center">
-  <em> Thanks for visiting ✨ nanobot!</em><br><br>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.nanobot&style=for-the-badge&color=00d4ff" alt="Views">
+  <em> Thanks for visiting ✨ pocketfox!</em><br><br>
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.pocketfox&style=for-the-badge&color=00d4ff" alt="Views">
 </p>
 
 
 <p align="center">
-  <sub>nanobot is for educational, research, and technical exchange purposes only</sub>
+  <sub>pocketfox is for educational, research, and technical exchange purposes only</sub>
 </p>

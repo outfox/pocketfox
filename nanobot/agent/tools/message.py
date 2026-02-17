@@ -3,9 +3,9 @@
 import re
 from typing import Any, Callable, Awaitable
 
-from nanobot.agent.tools.base import Tool
-from nanobot.bus.events import OutboundMessage
-from nanobot.channels.base import SendError
+from pocketfox.agent.tools.base import Tool
+from pocketfox.bus.events import OutboundMessage
+from pocketfox.channels.base import SendError
 
 
 class MessageTool(Tool):

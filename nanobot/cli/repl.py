@@ -1,4 +1,4 @@
-"""Python REPL for nanobot development and debugging."""
+"""Python REPL for pocketfox development and debugging."""
 
 import code
 import sys
@@ -11,11 +11,11 @@ from rich.console import Console
 console = Console()
 
 
-class NanobotNamespace:
+class pocketfoxNamespace:
     """
     Convenience namespace for REPL development.
     
-    Provides easy access to nanobot internals without needing
+    Provides easy access to pocketfox internals without needing
     to import everything manually.
     """
     
@@ -32,7 +32,7 @@ class NanobotNamespace:
     def workspace(self) -> Path:
         """Get the workspace path."""
         if self._workspace is None:
-            from nanobot.config.loader import load_config
+            from pocketfox.config.loader import load_config
             self._config = load_config()
             self._workspace = self._config.workspace_path
         return self._workspace
@@ -41,7 +41,7 @@ class NanobotNamespace:
     def config(self):
         """Get the loaded config."""
         if self._config is None:
-            from nanobot.config.loader import load_config
+            from pocketfox.config.loader import load_config
             self._config = load_config()
         return self._config
     
@@ -49,7 +49,7 @@ class NanobotNamespace:
     def context(self):
         """Get a ContextBuilder instance."""
         if self._context is None:
-            from nanobot.agent.context import ContextBuilder
+            from pocketfox.agent.context import ContextBuilder
             self._context = ContextBuilder(self.workspace)
         return self._context
     
@@ -57,12 +57,12 @@ class NanobotNamespace:
     def tools(self):
         """Get a ToolRegistry instance with default tools."""
         if self._tools is None:
-            from nanobot.agent.tools.registry import ToolRegistry
-            from nanobot.agent.tools.filesystem import (
+            from pocketfox.agent.tools.registry import ToolRegistry
+            from pocketfox.agent.tools.filesystem import (
                 ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
             )
-            from nanobot.agent.tools.shell import ExecTool
-            from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
+            from pocketfox.agent.tools.shell import ExecTool
+            from pocketfox.agent.tools.web import WebSearchTool, WebFetchTool
             
             self._tools = ToolRegistry()
             self._tools.register(ReadFileTool())
@@ -78,7 +78,7 @@ class NanobotNamespace:
     def provider(self):
         """Get an LLM provider instance."""
         if self._provider is None:
-            from nanobot.providers.litellm_provider import LiteLLMProvider
+            from pocketfox.providers.litellm_provider import LiteLLMProvider
             cfg = self.config
             p = cfg.get_provider()
             self._provider = LiteLLMProvider(
@@ -90,23 +90,23 @@ class NanobotNamespace:
     
     def reload(self) -> None:
         """
-        Reload nanobot modules for hot-reloading during development.
+        Reload pocketfox modules for hot-reloading during development.
         
         Note: This is a best-effort reload. Some state may persist.
         """
         import importlib
         
-        # Find all nanobot modules
-        nanobot_modules = [
+        # Find all pocketfox modules
+        pocketfox_modules = [
             name for name in sys.modules.keys()
-            if name.startswith('nanobot')
+            if name.startswith('pocketfox')
         ]
         
         # Sort by depth (reload deepest first)
-        nanobot_modules.sort(key=lambda x: x.count('.'), reverse=True)
+        pocketfox_modules.sort(key=lambda x: x.count('.'), reverse=True)
         
         reloaded = 0
-        for name in nanobot_modules:
+        for name in pocketfox_modules:
             try:
                 importlib.reload(sys.modules[name])
                 reloaded += 1
@@ -123,13 +123,13 @@ class NanobotNamespace:
     
     def __repr__(self) -> str:
         return (
-            "NanobotNamespace(\n"
+            "pocketfoxNamespace(\n"
             f"  workspace={self.workspace},\n"
             "  .config    - loaded configuration\n"
             "  .context   - ContextBuilder instance\n"
             "  .tools     - ToolRegistry with default tools\n"
             "  .provider  - LLM provider instance\n"
-            "  .reload()  - hot-reload nanobot modules\n"
+            "  .reload()  - hot-reload pocketfox modules\n"
             ")"
         )
 
@@ -139,16 +139,16 @@ def start_repl(
     workspace: Path | None = None,
 ) -> None:
     """
-    Start the nanobot Python REPL.
+    Start the pocketfox Python REPL.
     
     Args:
         use_ipython: If True, try to use IPython if available.
         workspace: Override workspace path.
     """
-    from nanobot import __logo__, __version__
+    from pocketfox import __logo__, __version__
     
     # Create convenience namespace
-    nb = NanobotNamespace(workspace=workspace)
+    nb = pocketfoxNamespace(workspace=workspace)
     
     # Build the namespace for the REPL
     namespace: dict[str, Any] = {
@@ -158,13 +158,13 @@ def start_repl(
     
     # Pre-import common modules
     try:
-        from nanobot.agent.context import ContextBuilder
-        from nanobot.agent.tools.registry import ToolRegistry
-        from nanobot.agent.loop import AgentLoop
-        from nanobot.bus.queue import MessageBus
-        from nanobot.bus.events import InboundMessage, OutboundMessage
-        from nanobot.session.manager import SessionManager
-        from nanobot.config.loader import load_config
+        from pocketfox.agent.context import ContextBuilder
+        from pocketfox.agent.tools.registry import ToolRegistry
+        from pocketfox.agent.loop import AgentLoop
+        from pocketfox.bus.queue import MessageBus
+        from pocketfox.bus.events import InboundMessage, OutboundMessage
+        from pocketfox.session.manager import SessionManager
+        from pocketfox.config.loader import load_config
         
         namespace.update({
             'ContextBuilder': ContextBuilder,
@@ -181,10 +181,10 @@ def start_repl(
     
     # Banner
     banner = f"""
-{__logo__} nanobot REPL v{__version__}
+{__logo__} pocketfox REPL v{__version__}
 
 Pre-loaded:
-  nb          - NanobotNamespace (convenience object)
+  nb          - pocketfoxNamespace (convenience object)
   nb.config   - loaded configuration  
   nb.context  - ContextBuilder instance
   nb.tools    - ToolRegistry with default tools

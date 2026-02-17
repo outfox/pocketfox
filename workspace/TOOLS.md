@@ -1,6 +1,6 @@
 # Available Tools
 
-This document describes the tools available to nanobot.
+This document describes the tools available to pocketfox.
 
 ## File Operations
 
@@ -81,7 +81,7 @@ voice(
     stability: float = 0.0,       # Optional: 0.0=creative, 0.5=natural, 1.0=robust
     speed: float = 1.0,           # Optional: 0.7=slow, 1.0=normal, 1.2=fast
     title: str = None,            # Optional: Audio metadata title
-    artist: str = "Blue Duval"    # Optional: Audio metadata artist
+    artist: str = "Pocketfox"    # Optional: Audio metadata artist
 ) -> str                          # Returns path to generated audio file
 ```
 
@@ -123,27 +123,27 @@ Use for complex or time-consuming tasks that can run independently. The subagent
 
 ## Scheduled Reminders (Cron)
 
-Use the `exec` tool to create scheduled reminders with `nanobot cron add`:
+Use the `exec` tool to create scheduled reminders with `pocketfox cron add`:
 
 ### Set a recurring reminder
 ```bash
 # Every day at 9am
-nanobot cron add --name "morning" --message "Good morning! ☀️" --cron "0 9 * * *"
+pocketfox cron add --name "morning" --message "Good morning! ☀️" --cron "0 9 * * *"
 
 # Every 2 hours
-nanobot cron add --name "water" --message "Drink water! 💧" --every 7200
+pocketfox cron add --name "water" --message "Drink water! 💧" --every 7200
 ```
 
 ### Set a one-time reminder
 ```bash
 # At a specific time (ISO format)
-nanobot cron add --name "meeting" --message "Meeting starts now!" --at "2025-01-31T15:00:00"
+pocketfox cron add --name "meeting" --message "Meeting starts now!" --at "2025-01-31T15:00:00"
 ```
 
 ### Manage reminders
 ```bash
-nanobot cron list              # List all jobs
-nanobot cron remove <job_id>   # Remove a job
+pocketfox cron list              # List all jobs
+pocketfox cron remove <job_id>   # Remove a job
 ```
 
 ## Heartbeat Task Management
@@ -185,6 +185,6 @@ write_file(
 ## Adding Custom Tools
 
 To add custom tools:
-1. Create a class that extends `Tool` in `nanobot/agent/tools/`
+1. Create a class that extends `Tool` in `pocketfox/agent/tools/`
 2. Implement `name`, `description`, `parameters`, and `execute`
 3. Register it in `AgentLoop._register_default_tools()`

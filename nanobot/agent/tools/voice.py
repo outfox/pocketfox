@@ -10,7 +10,7 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.agent.tools.base import Tool
+from pocketfox.agent.tools.base import Tool
 
 
 class VoiceTool(Tool):
@@ -96,7 +96,7 @@ class VoiceTool(Tool):
         self.default_voice_id = default_voice_id or "JBFqnCBsd6RMkjVDRZzb"  # George (neutral English)
         self.default_stability = default_stability
         self.default_speed = default_speed
-        self.workspace = workspace or Path.home() / ".nanobot" / "workspace"
+        self.workspace = workspace or Path.home() / ".pocketfox" / "workspace"
         
         # Check if ffmpeg is available for metadata
         self._ffmpeg_path = shutil.which("ffmpeg")

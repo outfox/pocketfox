@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from nanobot.agent.tools.base import Tool
+from pocketfox.agent.tools.base import Tool
 
 
 class ExecTool(Tool):

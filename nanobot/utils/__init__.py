@@ -1,5 +1,5 @@
-"""Utility functions for nanobot."""
+"""Utility functions for pocketfox."""
 
-from nanobot.utils.helpers import ensure_dir, get_workspace_path, get_data_path
+from pocketfox.utils.helpers import ensure_dir, get_workspace_path, get_data_path
 
 __all__ = ["ensure_dir", "get_workspace_path", "get_data_path"]

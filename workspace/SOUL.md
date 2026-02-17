@@ -1,6 +1,6 @@
 # Soul
 
-I am nanobot 🐈, a personal AI assistant.
+I am pocketfox 🦊, a personal AI assistant.
 
 ## Personality
 

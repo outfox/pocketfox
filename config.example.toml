@@ -1,6 +1,6 @@
-# NanoBot configuration
-# Copy to ~/.nanobot/config.toml and fill in your API keys.
-# Docs: https://github.com/HKUDS/nanobot
+# pocketfox configuration
+# Copy to ~/.pocketfox/config.toml and fill in your API keys.
+# Docs: https://github.com/HKUDS/pocketfox
 
 [providers.openrouter]
 api_key = "${OPENROUTER_API_KEY}"

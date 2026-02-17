@@ -8,10 +8,10 @@ from typing import Any
 from loguru import logger
 import httpx
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel
-from nanobot.config.schema import DingTalkConfig
+from pocketfox.bus.events import OutboundMessage
+from pocketfox.bus.queue import MessageBus
+from pocketfox.channels.base import BaseChannel
+from pocketfox.config.schema import DingTalkConfig
 
 try:
     from dingtalk_stream import (
@@ -33,10 +33,10 @@ except ImportError:
     ChatbotMessage = None  # type: ignore[assignment,misc]
 
 
-class NanobotDingTalkHandler(CallbackHandler):
+class pocketfoxDingTalkHandler(CallbackHandler):
     """
     Standard DingTalk Stream SDK Callback Handler.
-    Parses incoming messages and forwards them to the Nanobot channel.
+    Parses incoming messages and forwards them to the pocketfox channel.
     """
 
     def __init__(self, channel: "DingTalkChannel"):
@@ -67,7 +67,7 @@ class NanobotDingTalkHandler(CallbackHandler):
 
             logger.info(f"Received DingTalk message from {sender_name} ({sender_id}): {content}")
 
-            # Forward to Nanobot via _on_message (non-blocking).
+            # Forward to pocketfox via _on_message (non-blocking).
             # Store reference to prevent GC before task completes.
             task = asyncio.create_task(
                 self.channel._on_message(content, sender_id, sender_name)
@@ -132,7 +132,7 @@ class DingTalkChannel(BaseChannel):
             self._client = DingTalkStreamClient(credential)
 
             # Register standard handler
-            handler = NanobotDingTalkHandler(self)
+            handler = pocketfoxDingTalkHandler(self)
             self._client.register_callback_handler(ChatbotMessage.TOPIC, handler)
 
             logger.info("DingTalk bot started with Stream Mode")
@@ -200,7 +200,7 @@ class DingTalkChannel(BaseChannel):
             "msgKey": "sampleMarkdown",
             "msgParam": json.dumps({
                 "text": msg.content,
-                "title": "Nanobot Reply",
+                "title": "pocketfox Reply",
             }),
         }
 
@@ -218,7 +218,7 @@ class DingTalkChannel(BaseChannel):
             logger.error(f"Error sending DingTalk message: {e}")
 
     async def _on_message(self, content: str, sender_id: str, sender_name: str) -> None:
-        """Handle incoming message (called by NanobotDingTalkHandler).
+        """Handle incoming message (called by pocketfoxDingTalkHandler).
 
         Delegates to BaseChannel._handle_message() which enforces allow_from
         permission checks before publishing to the bus.

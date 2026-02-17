@@ -1,4 +1,4 @@
-"""TTY interface for interactive nanobot development and debugging."""
+"""TTY interface for interactive pocketfox development and debugging."""
 
 import asyncio
 import json
@@ -48,7 +48,7 @@ class TTYAgent:
     def config(self):
         """Lazy-load config."""
         if self._config is None:
-            from nanobot.config.loader import load_config
+            from pocketfox.config.loader import load_config
             self._config = load_config()
         return self._config
     
@@ -56,7 +56,7 @@ class TTYAgent:
     def provider(self):
         """Lazy-load provider."""
         if self._provider is None:
-            from nanobot.providers.litellm_provider import LiteLLMProvider
+            from pocketfox.providers.litellm_provider import LiteLLMProvider
             cfg = self.config
             effective_model = self.model or cfg.agents.defaults.model
             p = cfg.get_provider(effective_model)
@@ -75,12 +75,12 @@ class TTYAgent:
     def tools(self):
         """Lazy-load tools."""
         if self._tools is None:
-            from nanobot.agent.tools.registry import ToolRegistry
-            from nanobot.agent.tools.filesystem import (
+            from pocketfox.agent.tools.registry import ToolRegistry
+            from pocketfox.agent.tools.filesystem import (
                 ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
             )
-            from nanobot.agent.tools.shell import ExecTool
-            from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
+            from pocketfox.agent.tools.shell import ExecTool
+            from pocketfox.agent.tools.web import WebSearchTool, WebFetchTool
             
             self._tools = ToolRegistry()
             self._tools.register(ReadFileTool())
@@ -98,7 +98,7 @@ class TTYAgent:
     def context(self):
         """Lazy-load context builder."""
         if self._context is None:
-            from nanobot.agent.context import ContextBuilder
+            from pocketfox.agent.context import ContextBuilder
             self._context = ContextBuilder(self.workspace)
         return self._context
     
@@ -280,8 +280,8 @@ def start_tty(
     import select
     from pathlib import Path
     
-    from nanobot import __logo__, __version__
-    from nanobot.config.loader import load_config
+    from pocketfox import __logo__, __version__
+    from pocketfox.config.loader import load_config
     
     # Load config for workspace
     config = load_config()
@@ -298,7 +298,7 @@ def start_tty(
     
     # Readline setup (borrowed from commands.py)
     _readline = None
-    _history_file = Path.home() / ".nanobot" / "history" / "tty_history"
+    _history_file = Path.home() / ".pocketfox" / "history" / "tty_history"
     _history_file.parent.mkdir(parents=True, exist_ok=True)
     _using_libedit = False
     
@@ -347,7 +347,7 @@ def start_tty(
     
     mode_str = " ".join(mode_flags) if mode_flags else "[dim]normal[/dim]"
     
-    console.print(f"\n{__logo__} nanobot TTY v{__version__}")
+    console.print(f"\n{__logo__} pocketfox TTY v{__version__}")
     console.print(f"Mode: {mode_str}")
     console.print(f"Workspace: [dim]{ws}[/dim]")
     console.print("\nCommands: /reset (clear history), /verbose, /dry-run, /breakpoints, /quit")

@@ -1,8 +1,8 @@
 """
-Entry point for running nanobot as a module: python -m nanobot
+Entry point for running pocketfox as a module: python -m pocketfox
 """
 
-from nanobot.cli.commands import app
+from pocketfox.cli.commands import app
 
 if __name__ == "__main__":
     app()

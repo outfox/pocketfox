@@ -12,7 +12,7 @@ pip install -e .
 pip install -e ".[dev]"
 
 # Install from PyPI
-pip install nanobot-ai
+pip install pocketfox-ai
 
 # Run all tests
 pytest tests/
@@ -24,14 +24,14 @@ pytest tests/test_tool_validation.py
 pytest tests/test_tool_validation.py -k "test_name"
 
 # Lint and format
-ruff check nanobot/
-ruff format nanobot/
+ruff check pocketfox/
+ruff format pocketfox/
 
 # Count core agent lines (should be ~3,500)
 bash core_agent_lines.sh
 
 # Docker build and test
-docker build -t nanobot .
+docker build -t pocketfox .
 bash tests/test_docker.sh
 ```
 
@@ -41,19 +41,19 @@ bash tests/test_docker.sh
 ## CLI Commands
 
 ```bash
-nanobot onboard          # Initialize config and workspace
-nanobot agent -m "..."   # Send single message
-nanobot agent            # Interactive REPL mode
-nanobot gateway          # Start gateway (channels + agent loop)
-nanobot status           # Show config and provider status
-nanobot channels login   # Link WhatsApp
-nanobot channels status  # Show channel status
-nanobot cron add/list/remove  # Manage scheduled tasks
+pocketfox onboard          # Initialize config and workspace
+pocketfox agent -m "..."   # Send single message
+pocketfox agent            # Interactive REPL mode
+pocketfox gateway          # Start gateway (channels + agent loop)
+pocketfox status           # Show config and provider status
+pocketfox channels login   # Link WhatsApp
+pocketfox channels status  # Show channel status
+pocketfox cron add/list/remove  # Manage scheduled tasks
 ```
 
 ## Architecture
 
-**nanobot** is an ultra-lightweight personal AI assistant framework (~3,500 lines of core code). Python 3.11+, fully async.
+**pocketfox** is an ultra-lightweight personal AI assistant framework (~3,500 lines of core code). Python 3.11+, fully async.
 
 ### Message Flow
 
@@ -63,19 +63,19 @@ Channel → InboundMessage → MessageBus → AgentLoop → LLM + ToolExecution 
 
 ### Key Components
 
-- **`nanobot/agent/loop.py`** — Core agent loop. Receives messages from the bus, builds context, calls LLM, executes tools iteratively (max 20 iterations), returns response.
-- **`nanobot/agent/context.py`** — Assembles LLM prompts from history, memory, skills, and workspace bootstrap files (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md).
-- **`nanobot/bus/queue.py`** — Async message bus decoupling channels from the agent. Publish/subscribe pattern with `InboundMessage` and `OutboundMessage` events.
-- **`nanobot/agent/tools/`** — Tool system with abstract `Tool` base class. Tools use JSON Schema validation and OpenAI function calling format. Built-in tools: filesystem (read/write/edit/list), shell exec (with dangerous command blocking), web search/fetch, message routing, spawn (subagents), cron management.
-- **`nanobot/agent/subagent.py`** — Background task spawning. Subagents get a restricted tool set (no message, no spawn) and announce results back via system message.
-- **`nanobot/providers/registry.py`** — Single source of truth for LLM providers. Adding a provider: (1) add `ProviderSpec` to the `PROVIDERS` tuple, (2) add field to `ProvidersConfig` in `config/schema.py`. 13+ providers supported via LiteLLM.
-- **`nanobot/channels/`** — Chat platform integrations (Telegram, Discord, WhatsApp, Feishu, DingTalk, Signal). Each extends `BaseChannel` ABC with `start()`, `stop()`, `send()`, `is_allowed()`.
-- **`nanobot/config/schema.py`** — Pydantic-based config. Root: `Config` with `agents`, `channels`, `providers`, `gateway`, `tools` sections. Stored at `~/.nanobot/config.toml`.
-- **`nanobot/session/manager.py`** — Conversation persistence in JSONL format at `~/.nanobot/sessions/`.
-- **`nanobot/agent/memory.py`** — Daily notes (`YYYY-MM-DD.md`) and long-term memory (`MEMORY.md`) at `~/.nanobot/workspace/memory/`.
-- **`nanobot/cron/`** — Persistent scheduled tasks with croniter. Jobs stored in `~/.nanobot/cron/jobs.json`.
-- **`nanobot/heartbeat/`** — 30-minute periodic check that reads `HEARTBEAT.md`, parses checklist items, spawns subagents for incomplete tasks.
-- **`nanobot/skills/`** — Extensible skill system. Skills are Markdown files (`SKILL.md`) with YAML frontmatter (name, description, metadata) followed by agent instructions. Loaded from `~/.nanobot/workspace/skills/` or built-in `nanobot/skills/`. Built-in: github, weather, tmux, cron, skill-creator, summarize.
+- **`pocketfox/agent/loop.py`** — Core agent loop. Receives messages from the bus, builds context, calls LLM, executes tools iteratively (max 20 iterations), returns response.
+- **`pocketfox/agent/context.py`** — Assembles LLM prompts from history, memory, skills, and workspace bootstrap files (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md).
+- **`pocketfox/bus/queue.py`** — Async message bus decoupling channels from the agent. Publish/subscribe pattern with `InboundMessage` and `OutboundMessage` events.
+- **`pocketfox/agent/tools/`** — Tool system with abstract `Tool` base class. Tools use JSON Schema validation and OpenAI function calling format. Built-in tools: filesystem (read/write/edit/list), shell exec (with dangerous command blocking), web search/fetch, message routing, spawn (subagents), cron management.
+- **`pocketfox/agent/subagent.py`** — Background task spawning. Subagents get a restricted tool set (no message, no spawn) and announce results back via system message.
+- **`pocketfox/providers/registry.py`** — Single source of truth for LLM providers. Adding a provider: (1) add `ProviderSpec` to the `PROVIDERS` tuple, (2) add field to `ProvidersConfig` in `config/schema.py`. 13+ providers supported via LiteLLM.
+- **`pocketfox/channels/`** — Chat platform integrations (Telegram, Discord, WhatsApp, Feishu, DingTalk, Signal). Each extends `BaseChannel` ABC with `start()`, `stop()`, `send()`, `is_allowed()`.
+- **`pocketfox/config/schema.py`** — Pydantic-based config. Root: `Config` with `agents`, `channels`, `providers`, `gateway`, `tools` sections. Stored at `~/.pocketfox/config.toml`.
+- **`pocketfox/session/manager.py`** — Conversation persistence in JSONL format at `~/.pocketfox/sessions/`.
+- **`pocketfox/agent/memory.py`** — Daily notes (`YYYY-MM-DD.md`) and long-term memory (`MEMORY.md`) at `~/.pocketfox/workspace/memory/`.
+- **`pocketfox/cron/`** — Persistent scheduled tasks with croniter. Jobs stored in `~/.pocketfox/cron/jobs.json`.
+- **`pocketfox/heartbeat/`** — 30-minute periodic check that reads `HEARTBEAT.md`, parses checklist items, spawns subagents for incomplete tasks.
+- **`pocketfox/skills/`** — Extensible skill system. Skills are Markdown files (`SKILL.md`) with YAML frontmatter (name, description, metadata) followed by agent instructions. Loaded from `~/.pocketfox/workspace/skills/` or built-in `pocketfox/skills/`. Built-in: github, weather, tmux, cron, skill-creator, summarize.
 - **`bridge/`** — WhatsApp Baileys bridge (Node.js/TypeScript), separate from the Python codebase. HTTP API on `localhost:3001` with endpoints for session management and message sending.
 
 ### Key Patterns
@@ -83,7 +83,7 @@ Channel → InboundMessage → MessageBus → AgentLoop → LLM + ToolExecution 
 - **Async-first**: Pure async I/O throughout, asyncio task management.
 - **Registry-driven providers**: Declarative `ProviderSpec` tuples with automatic env var handling, model prefixing, and per-model parameter overrides.
 - **Tool ABC**: All tools implement `name()`, `description()`, `parameters()` (JSON Schema), `execute()`. Registered via tool registry.
-- **Workspace bootstrap**: Agent context assembled from Markdown files in `~/.nanobot/workspace/` — personality, instructions, user info, and tool docs (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md).
+- **Workspace bootstrap**: Agent context assembled from Markdown files in `~/.pocketfox/workspace/` — personality, instructions, user info, and tool docs (AGENTS.md, SOUL.md, USER.md, TOOLS.md, IDENTITY.md).
 - **Security sandboxing**: `tools.restrict_to_workspace` config option restricts all file/shell tools to workspace directory (path traversal protection).
 - **Message bus decoupling**: Channels publish/subscribe to `InboundMessage`/`OutboundMessage` events instead of directly calling agent code.
 
@@ -94,14 +94,14 @@ Channel → InboundMessage → MessageBus → AgentLoop → LLM + ToolExecution 
 - `channels.*.allow_from` — Whitelist user IDs (empty = allow all; production should restrict)
 - Shell tool blocks dangerous patterns: `rm -rf /`, fork bombs, `mkfs.*`, raw disk writes
 - Path traversal protection in filesystem tools
-- Config file at `~/.nanobot/config.toml` should be `chmod 600`
+- Config file at `~/.pocketfox/config.toml` should be `chmod 600`
 
 **For production deployments:**
 - Run as dedicated non-root user
 - Set `restrictToWorkspace: true`
 - Configure `allowFrom` lists for all channels
 - Use separate API keys with spending limits
-- Monitor logs at `~/.nanobot/logs/`
+- Monitor logs at `~/.pocketfox/logs/`
 - Keep dependencies updated (especially `litellm`)
 
 See `SECURITY.md` for full security checklist and incident response procedures.
@@ -112,7 +112,7 @@ See `SECURITY.md` for full security checklist and incident response procedures.
 
 The provider system uses a registry pattern for minimal code changes:
 
-1. Add `ProviderSpec` to `PROVIDERS` tuple in `nanobot/providers/registry.py`:
+1. Add `ProviderSpec` to `PROVIDERS` tuple in `pocketfox/providers/registry.py`:
    ```python
    ProviderSpec(
        name="myprovider",
@@ -124,27 +124,27 @@ The provider system uses a registry pattern for minimal code changes:
    )
    ```
 
-2. Add field to `ProvidersConfig` in `nanobot/config/schema.py`:
+2. Add field to `ProvidersConfig` in `pocketfox/config/schema.py`:
    ```python
    class ProvidersConfig(BaseModel):
        myprovider: ProviderConfig = ProviderConfig()
    ```
 
-That's it! Environment variables, model prefixing, config matching, and `nanobot status` display all work automatically.
+That's it! Environment variables, model prefixing, config matching, and `pocketfox status` display all work automatically.
 
 ### Adding a New Tool
 
-1. Create class extending `Tool` in `nanobot/agent/tools/`
+1. Create class extending `Tool` in `pocketfox/agent/tools/`
 2. Implement: `name`, `description`, `parameters` (JSON Schema), `execute()`
-3. Register in `nanobot/agent/tools/__init__.py`
+3. Register in `pocketfox/agent/tools/__init__.py`
 4. Tool automatically appears in LLM function calling
 
 ### Adding a New Channel
 
-1. Create class extending `BaseChannel` in `nanobot/channels/`
+1. Create class extending `BaseChannel` in `pocketfox/channels/`
 2. Implement: `start()`, `stop()`, `send()`, `is_allowed()`
-3. Add config schema to `ChannelsConfig` in `nanobot/config/schema.py`
-4. Register in `nanobot/channels/__init__.py`
+3. Add config schema to `ChannelsConfig` in `pocketfox/config/schema.py`
+4. Register in `pocketfox/channels/__init__.py`
 
 ### Adding a New Skill
 
@@ -158,13 +158,13 @@ description: Does something useful
 Instructions for the agent when this skill is loaded...
 ```
 
-Place in `~/.nanobot/workspace/skills/my-skill/SKILL.md` or create via `skill-creator` skill.
+Place in `~/.pocketfox/workspace/skills/my-skill/SKILL.md` or create via `skill-creator` skill.
 
 ## Debugging & Development Tips
 
-**Logs**: Check `~/.nanobot/logs/` for debug output
-**Config**: Located at `~/.nanobot/config.toml` (Pydantic validation errors show which fields are invalid)
-**Sessions**: JSONL files in `~/.nanobot/sessions/` — each message is one JSON line
+**Logs**: Check `~/.pocketfox/logs/` for debug output
+**Config**: Located at `~/.pocketfox/config.toml` (Pydantic validation errors show which fields are invalid)
+**Sessions**: JSONL files in `~/.pocketfox/sessions/` — each message is one JSON line
 **Agent loop**: Max 20 iterations before timeout (see `loop.py`)
 
 **Common patterns:**

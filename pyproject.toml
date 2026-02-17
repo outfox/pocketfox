@@ -1,11 +1,11 @@
 [project]
-name = "nanobot-ai"
+name = "pocketfox-ai"
 version = "0.1.3.post5"
 description = "A lightweight personal AI assistant framework"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "nanobot contributors"}
+    {name = "pocketfox contributors"}
 ]
 keywords = ["ai", "agent", "chatbot"]
 classifiers = [
@@ -46,7 +46,7 @@ dev = [
 ]
 
 [project.scripts]
-nanobot = "nanobot.cli.commands:app"
+pocketfox = "pocketfox.cli.commands:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -56,29 +56,29 @@ build-backend = "hatchling.build"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["nanobot"]
+packages = ["pocketfox"]
 
 [tool.hatch.build.targets.wheel.sources]
-"nanobot" = "nanobot"
+"pocketfox" = "pocketfox"
 
 # Include non-Python files in skills
 [tool.hatch.build]
 include = [
-    "nanobot/**/*.py",
-    "nanobot/skills/**/*.md",
-    "nanobot/skills/**/*.sh",
+    "pocketfox/**/*.py",
+    "pocketfox/skills/**/*.md",
+    "pocketfox/skills/**/*.sh",
 ]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "nanobot/",
+    "pocketfox/",
     "bridge/",
     "README.md",
     "LICENSE",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]
-"bridge" = "nanobot/bridge"
+"bridge" = "pocketfox/bridge"
 
 [tool.ruff]
 line-length = 100

@@ -9,8 +9,8 @@ from typing import Any, ClassVar
 
 from loom import Context, Entry, StringEntry, FileEntry
 
-from nanobot.agent.memory import MemoryStore
-from nanobot.agent.skills import SkillsLoader
+from pocketfox.agent.memory import MemoryStore
+from pocketfox.agent.skills import SkillsLoader
 
 
 class DateTimeEntry(Entry):
@@ -309,9 +309,9 @@ Skills with available="false" need dependencies installed first - you can try in
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
         
-        return f"""# nanobot 🐈
+        return f"""# pocketfox 🦊
 
-You are nanobot, a helpful AI assistant. You have access to tools that allow you to:
+You are pocketfox, a helpful AI assistant. You have access to tools that allow you to:
 - Read, write, and edit files
 - Execute shell commands
 - Search the web and fetch web pages

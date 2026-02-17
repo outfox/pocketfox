@@ -2,9 +2,9 @@
 
 from typing import Any
 
-from nanobot.agent.tools.base import Tool
-from nanobot.cron.service import CronService
-from nanobot.cron.types import CronSchedule
+from pocketfox.agent.tools.base import Tool
+from pocketfox.cron.service import CronService
+from pocketfox.cron.types import CronSchedule
 
 
 class CronTool(Tool):

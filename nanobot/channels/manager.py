@@ -7,13 +7,13 @@ from typing import Any, TYPE_CHECKING
 
 from loguru import logger
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel
-from nanobot.config.schema import Config
+from pocketfox.bus.events import OutboundMessage
+from pocketfox.bus.queue import MessageBus
+from pocketfox.channels.base import BaseChannel
+from pocketfox.config.schema import Config
 
 if TYPE_CHECKING:
-    from nanobot.session.manager import SessionManager
+    from pocketfox.session.manager import SessionManager
 
 
 class ChannelManager:
@@ -41,7 +41,7 @@ class ChannelManager:
         # Telegram channel
         if self.config.channels.telegram.enabled:
             try:
-                from nanobot.channels.telegram import TelegramChannel
+                from pocketfox.channels.telegram import TelegramChannel
                 self.channels["telegram"] = TelegramChannel(
                     self.config.channels.telegram,
                     self.bus,
@@ -55,7 +55,7 @@ class ChannelManager:
         # WhatsApp channel
         if self.config.channels.whatsapp.enabled:
             try:
-                from nanobot.channels.whatsapp import WhatsAppChannel
+                from pocketfox.channels.whatsapp import WhatsAppChannel
                 self.channels["whatsapp"] = WhatsAppChannel(
                     self.config.channels.whatsapp, self.bus
                 )
@@ -66,7 +66,7 @@ class ChannelManager:
         # Discord channel
         if self.config.channels.discord.enabled:
             try:
-                from nanobot.channels.discord import DiscordChannel
+                from pocketfox.channels.discord import DiscordChannel
                 self.channels["discord"] = DiscordChannel(
                     self.config.channels.discord, self.bus
                 )
@@ -77,7 +77,7 @@ class ChannelManager:
         # Feishu channel
         if self.config.channels.feishu.enabled:
             try:
-                from nanobot.channels.feishu import FeishuChannel
+                from pocketfox.channels.feishu import FeishuChannel
                 self.channels["feishu"] = FeishuChannel(
                     self.config.channels.feishu, self.bus
                 )
@@ -88,7 +88,7 @@ class ChannelManager:
         # DingTalk channel
         if self.config.channels.dingtalk.enabled:
             try:
-                from nanobot.channels.dingtalk import DingTalkChannel
+                from pocketfox.channels.dingtalk import DingTalkChannel
                 self.channels["dingtalk"] = DingTalkChannel(
                     self.config.channels.dingtalk, self.bus
                 )
@@ -99,7 +99,7 @@ class ChannelManager:
         # Signal channel
         if self.config.channels.signal.enabled:
             try:
-                from nanobot.channels.signal import SignalChannel
+                from pocketfox.channels.signal import SignalChannel
                 self.channels["signal"] = SignalChannel(
                     self.config.channels.signal,
                     self.bus,

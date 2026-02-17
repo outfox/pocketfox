@@ -7,20 +7,20 @@ from typing import Any
 
 from loguru import logger
 
-from nanobot.bus.events import InboundMessage, OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.providers.base import LLMProvider
-from nanobot.agent.context import ContextBuilder
-from nanobot.agent.tools.registry import ToolRegistry
-from nanobot.agent.tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
-from nanobot.agent.tools.shell import ExecTool
-from nanobot.agent.tools.web import WebSearchTool, WebFetchTool
-from nanobot.agent.tools.message import MessageTool
-from nanobot.agent.tools.spawn import SpawnTool
-from nanobot.agent.tools.cron import CronTool
-from nanobot.agent.tools.voice import VoiceTool
-from nanobot.agent.subagent import SubagentManager
-from nanobot.session.manager import SessionManager
+from pocketfox.bus.events import InboundMessage, OutboundMessage
+from pocketfox.bus.queue import MessageBus
+from pocketfox.providers.base import LLMProvider
+from pocketfox.agent.context import ContextBuilder
+from pocketfox.agent.tools.registry import ToolRegistry
+from pocketfox.agent.tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
+from pocketfox.agent.tools.shell import ExecTool
+from pocketfox.agent.tools.web import WebSearchTool, WebFetchTool
+from pocketfox.agent.tools.message import MessageTool
+from pocketfox.agent.tools.spawn import SpawnTool
+from pocketfox.agent.tools.cron import CronTool
+from pocketfox.agent.tools.voice import VoiceTool
+from pocketfox.agent.subagent import SubagentManager
+from pocketfox.session.manager import SessionManager
 
 
 class AgentLoop:
@@ -49,8 +49,8 @@ class AgentLoop:
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
     ):
-        from nanobot.config.schema import ExecToolConfig, VoiceToolConfig
-        from nanobot.cron.service import CronService
+        from pocketfox.config.schema import ExecToolConfig, VoiceToolConfig
+        from pocketfox.cron.service import CronService
         self.bus = bus
         self.provider = provider
         self.workspace = workspace

@@ -8,17 +8,17 @@ from typing import Any
 import tomli_w
 from loguru import logger
 
-from nanobot.config.schema import Config
+from pocketfox.config.schema import Config
 
 
 def get_config_path() -> Path:
     """Get the default configuration file path."""
-    return Path.home() / ".nanobot" / "config.toml"
+    return Path.home() / ".pocketfox" / "config.toml"
 
 
 def get_data_dir() -> Path:
-    """Get the nanobot data directory."""
-    from nanobot.utils.helpers import get_data_path
+    """Get the pocketfox data directory."""
+    from pocketfox.utils.helpers import get_data_path
 
     return get_data_path()
 
@@ -36,7 +36,7 @@ def load_config(config_path: Path | None = None) -> Config:
     if config_path:
         return _load_from_path(config_path)
 
-    toml_path = Path.home() / ".nanobot" / "config.toml"
+    toml_path = Path.home() / ".pocketfox" / "config.toml"
 
     if toml_path.exists():
         return _load_from_path(toml_path)

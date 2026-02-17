@@ -12,14 +12,14 @@ from urllib.parse import quote
 import aiohttp
 from loguru import logger
 
-from nanobot.bus.events import OutboundMessage
-from nanobot.bus.queue import MessageBus
-from nanobot.channels.base import BaseChannel, SendError
-from nanobot.config.schema import SignalConfig
-from nanobot.utils.helpers import redact_phone_number
+from pocketfox.bus.events import OutboundMessage
+from pocketfox.bus.queue import MessageBus
+from pocketfox.channels.base import BaseChannel, SendError
+from pocketfox.config.schema import SignalConfig
+from pocketfox.utils.helpers import redact_phone_number
 
 if TYPE_CHECKING:
-    from nanobot.session.manager import SessionManager
+    from pocketfox.session.manager import SessionManager
 
 
 class SignalChannel(BaseChannel):
@@ -351,7 +351,7 @@ class SignalChannel(BaseChannel):
         ext = self._get_extension(content_type, filename)
 
         # Create media directory
-        media_dir = Path.home() / ".nanobot" / "media" / "signal"
+        media_dir = Path.home() / ".pocketfox" / "media" / "signal"
         media_dir.mkdir(parents=True, exist_ok=True)
 
         # Use attachment ID as filename (truncated for sanity)
@@ -415,7 +415,7 @@ class SignalChannel(BaseChannel):
             return ""
 
         try:
-            from nanobot.providers.transcription import GroqTranscriptionProvider
+            from pocketfox.providers.transcription import GroqTranscriptionProvider
 
             transcriber = GroqTranscriptionProvider(api_key=self.groq_api_key)
             transcription = await transcriber.transcribe(file_path)
