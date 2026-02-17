@@ -1,3 +1,10 @@
+# Version control & IDE
+.venv/
+.git
+.github/
+.idea/
+
+# Dev/test artifacts
 __pycache__
 *.pyc
 *.pyo
@@ -5,9 +12,26 @@ __pycache__
 *.egg-info
 dist/
 build/
-.git
+tests/
+case/
+core_agent_lines.sh
+
+# Docs & assets (not needed at runtime; also avoids leaking internal dev/security notes)
+README.md
+CLAUDE.md
+SECURITY.md
+*.svg
+*.png
+
+# Docker meta (no need to ship these inside the image)
+Dockerfile
+docker-compose.yml
+
+# Secrets / local overrides
 .env
 .assets
+workspace/
+
+# Node
 node_modules/
 bridge/dist/
-workspace/

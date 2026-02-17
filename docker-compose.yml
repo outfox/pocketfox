@@ -1,0 +1,68 @@
+# pocketfox Docker Compose configuration
+# 
+# Usage:
+#   cp .env.example .env
+#   # Edit .env with your API keys
+#   docker compose up -d
+#
+
+services:
+  pocketfox:
+    image: pocketfox:latest
+    container_name: pocketfox
+    restart: unless-stopped
+    build:
+      context: .
+      ssh:
+        - default
+      args:
+        CACHE_BUST: ${CACHE_BUST:-0}
+    volumes:
+      # Base workspace (personality files: SOUL.md, IDENTITY.md, memory/, skills/)
+      - ${HOME}/persistence-local/workspace:~/.nanobot/workspace
+      # Avatar images (cute!)
+      - ${HOME}/persistence-local/avatars:~/.nanobot/workspace/avatars
+      # Projects directory to allow her to work on her own code a little more persistently
+      - ${HOME}/projects:~/.nanobot/workspace/projects
+      # User config/credentials (in home directory, not workspace)
+      - ${HOME}/persistence-local/nanobot:~/.nanobot
+      - ${HOME}/persistence-local/config:~/.config
+      - ${HOME}/persistence-local/claude_auth:~/.claude
+      - ${HOME}/.ssh:~/.ssh
+    environment:
+      # Timezone
+      - TZ=Europe/Berlin
+    
+    ports:
+      - "18790:18790"
+
+    # Run as non-root user (set via USER directive in Dockerfile)
+
+  # Browserless - Headless Chrome for web automation & OAuth
+  browserless:
+    image: ghcr.io/browserless/chromium:v2.39.0
+    container_name: browserless
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"  # Only localhost
+    environment:
+      - CONCURRENT=1
+      - TOKEN=${BROWSERLESS_TOKEN:-}
+      - DATA_DIR=/data
+      - TIMEOUT=300000
+    volumes:
+      - ${HOME}/persistence-local/browserless-data:/data  # bind mount instead of named volume
+    tmpfs:
+      - /tmp
+
+  # Signal CLI REST API - Signal Messenger integration
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:0.97
+    container_name: signal-cli
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"  # Only localhost
+    environment:
+      - MODE=json-rpc  # better polling response time
+    volumes:
+      - ${HOME}/persistence-local/signal-cli-data:/home/.local/share/signal-cli
