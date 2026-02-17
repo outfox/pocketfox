@@ -64,7 +64,7 @@
 **Install from source** (latest features, recommended for development)
 
 ```bash
-git clone https://github.com/HKUDS/pocketfox.git
+git clone https://github.com/outfox/pocketfox.git
 cd pocketfox
 pip install -e .
 ```
@@ -538,7 +538,7 @@ pocketfox/
 
 PRs welcome! The codebase is intentionally small and readable. 🤗
 
-**Roadmap** — Pick an item and [open a PR](https://github.com/HKUDS/pocketfox/pulls)!
+**Roadmap** — Pick an item and [open a PR](https://github.com/outfox/pocketfox/pulls)!
 
 - [x] **Voice Transcription** — Support for Groq Whisper (Issue #13)
 - [ ] **Multi-modal** — See and hear (images, voice, video)
@@ -549,26 +549,26 @@ PRs welcome! The codebase is intentionally small and readable. 🤗
 
 ### Contributors
 
-<a href="https://github.com/HKUDS/pocketfox/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=HKUDS/pocketfox&max=100&columns=12" />
+<a href="https://github.com/outfox/pocketfox/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=outfox/pocketfox&max=100&columns=12" />
 </a>
 
 
 ## ⭐ Star History
 
 <div align="center">
-  <a href="https://star-history.com/#HKUDS/pocketfox&Date">
+  <a href="https://star-history.com/#outfox/pocketfox&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/pocketfox&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/pocketfox&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/pocketfox&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=outfox/pocketfox&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=outfox/pocketfox&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=outfox/pocketfox&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
     </picture>
   </a>
 </div>
 
 <p align="center">
   <em> Thanks for visiting ✨ pocketfox!</em><br><br>
-  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.pocketfox&style=for-the-badge&color=00d4ff" alt="Views">
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=outfox.pocketfox&style=for-the-badge&color=00d4ff" alt="Views">
 </p>
 
 

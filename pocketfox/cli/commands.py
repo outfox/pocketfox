@@ -192,7 +192,7 @@ def onboard():
     console.print("  1. Add your API key to [cyan]~/.pocketfox/config.toml[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
     console.print("  2. Chat: [cyan]pocketfox agent -m \"Hello!\"[/cyan]")
-    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/pocketfox#-chat-apps[/dim]")
+    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/outfox/pocketfox#-chat-apps[/dim]")
 
 
 

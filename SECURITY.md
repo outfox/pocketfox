@@ -251,8 +251,8 @@ Before deploying pocketfox:
 **Last Updated**: 2026-02-03
 
 For the latest security updates and announcements, check:
-- GitHub Security Advisories: https://github.com/HKUDS/pocketfox/security/advisories
-- Release Notes: https://github.com/HKUDS/pocketfox/releases
+- GitHub Security Advisories: https://github.com/outfox/pocketfox/security/advisories
+- Release Notes: https://github.com/outfox/pocketfox/releases
 
 ## License
 
