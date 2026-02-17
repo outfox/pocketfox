@@ -1,5 +1,7 @@
-# IDE + Agent scatter
+# IDE + Agent clutter
 .claude
+CLAUDE.md
+AGENTS.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
