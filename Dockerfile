@@ -9,7 +9,7 @@ FROM golang:1.26 AS go-builder
 
 # Build gogcli (Google Suite CLI)
 RUN git clone https://github.com/steipete/gogcli.git /gogcli && \
-    cd /gogcli && make
+    cd /gogcli && git checkout v0.11.0 && make
 
 # Build sag (ElevenLabs TTS CLI) - needs CGO for ALSA
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -49,7 +49,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     ffmpeg \
     libasound2 \
-    git \
     curl \
     wget \
     ssh \
@@ -103,17 +102,17 @@ RUN useradd -m -u 1000 -s /bin/bash pocketfox
 # - ~/.config: NOT visible in sandbox (credentials like gog tokens)
 # When exec runs with sandbox_dir configured, bwrap isolates commands to only
 # see /workspace, preventing access to credentials and prompt files.
-RUN mkdir -p ~/.pocketfox/workspace \
-             ~/.pocketfox/prompt \
-             ~/.config \
-             ~/.claude \
-             ~/.ssh && \
-    chmod 700 ~/.ssh && \
-    chown -R pocketfox:pocketfox ~
+RUN mkdir -p /home/pocketfox/.pocketfox/workspace \
+             /home/pocketfox/.pocketfox/prompt \
+             /home/pocketfox/.config \
+             /home/pocketfox/.claude \
+             /home/pocketfox/.ssh && \
+    chmod 700 /home/pocketfox/.ssh && \
+    chown -R pocketfox:pocketfox /home/pocketfox
 
-# get the pocketfox fork
-RUN mkdir -p ~/.ssh
-RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
+# SSH known_hosts for root (for git clone during build)
+RUN mkdir -p /root/.ssh && \
+    ssh-keyscan github.com >> /root/.ssh/known_hosts
 
 # Copy pocketfox from local source (this repo)
 COPY . /root/pocketfox
@@ -129,6 +128,9 @@ RUN uv pip install --system --no-cache .
 WORKDIR /root/pocketfox
 RUN uv pip install --system --no-cache .
 
+# Install convert-all for file format conversions (e.g. docx to markdown)
+RUN uv pip install --system convert-all
+
 # Claude Code environment
 ENV CLAUDE_CODE_USE_BEDROCK=0
 
@@ -141,16 +143,16 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Switch to non-root user for runtime
 USER pocketfox
-ENV HOME=~
-ENV PATH="~/.local/bin:~/.cargo/bin:${PATH}"
+ENV HOME=/home/pocketfox
+ENV PATH="/home/pocketfox/.local/bin:/home/pocketfox/.cargo/bin:${PATH}"
 
-WORKDIR ~
+WORKDIR /home/pocketfox
 
 RUN git config --global user.name "Blue Duval" && \
     git config --global user.email "blue@tiger.blue"
 
-# GitHub known_hosts
-RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
+# GitHub known_hosts for pocketfox user
+RUN ssh-keyscan github.com >> /home/pocketfox/.ssh/known_hosts
 
 # Default command: run the gateway
 CMD ["pocketfox", "gateway"]
