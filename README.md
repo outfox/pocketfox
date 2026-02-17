@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="pocketfox-logo.svg" alt="pocketfox" width="500">
   <h1>pocketfox: Ultra-Lightweight Personal AI Assistant</h1>
+  <img src="pocketfox-logo.svg" alt="pocketfox" width="300">
   <p>
     <a href="https://pypi.org/project/pocketfox-ai/"><img src="https://img.shields.io/pypi/v/pocketfox-ai" alt="PyPI"></a>
     <a href="https://pepy.tech/project/pocketfox-ai"><img src="https://static.pepy.tech/badge/pocketfox-ai" alt="Downloads"></a>
