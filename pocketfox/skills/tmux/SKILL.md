@@ -11,7 +11,7 @@ Use tmux only when you need an interactive TTY. Prefer exec background mode for 
 ## Quickstart (isolated socket, exec tool)
 
 ```bash
-SOCKET_DIR="${pocketfox_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/pocketfox-tmux-sockets}"
+SOCKET_DIR="${POCKETFOX_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/pocketfox-tmux-sockets}"
 mkdir -p "$SOCKET_DIR"
 SOCKET="$SOCKET_DIR/pocketfox.sock"
 SESSION=pocketfox-python
@@ -32,7 +32,7 @@ To monitor:
 ## Socket convention
 
 - Use `pocketfox_TMUX_SOCKET_DIR` environment variable.
-- Default socket path: `"$pocketfox_TMUX_SOCKET_DIR/pocketfox.sock"`.
+- Default socket path: `"$POCKETFOX_TMUX_SOCKET_DIR/pocketfox.sock"`.
 
 ## Targeting panes and naming
 

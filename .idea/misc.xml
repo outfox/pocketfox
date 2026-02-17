@@ -3,4 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="uv (nanobot)" />
   </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="uv (pocketfox)" project-jdk-type="Python SDK" />
 </project>

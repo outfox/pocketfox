@@ -118,18 +118,25 @@ RUN mkdir -p /root/.ssh && \
 COPY . /root/pocketfox
 
 ARG CACHE_BUST=0
+
 RUN --mount=type=ssh \
     git clone --depth 1 git@github.com:outfox/loom /root/loom
+
+RUN --mount=type=ssh \
+    git clone --depth 1 git@github.com:outfox/any2any /root/any2any
 
 # Install loom first (dependency), then pocketfox from local source
 WORKDIR /root/loom
 RUN uv pip install --system --no-cache .
 
-WORKDIR /root/pocketfox
+# Install convert-all for file format conversions (e.g. docx to markdown)
+WORKDIR /root/any2any
 RUN uv pip install --system --no-cache .
 
-# Install convert-all for file format conversions (e.g. docx to markdown)
-RUN uv pip install --system convert-all
+
+# Finally, the main agent code
+WORKDIR /root/pocketfox
+RUN uv pip install --system --no-cache .
 
 # Claude Code environment
 ENV CLAUDE_CODE_USE_BEDROCK=0
