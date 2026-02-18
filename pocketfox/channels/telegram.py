@@ -207,12 +207,13 @@ class TelegramChannel(BaseChannel):
         self._stop_typing(msg.chat_id)
         
         try:
-            # chat_id should be the Telegram chat ID (integer)
-            chat_id = int(msg.chat_id)
-        except ValueError:
-            raise SendError(f"Invalid chat_id: {msg.chat_id}")
-        
-        try:
+            # chat_id should be the Telegram chat ID (integer).
+            # Kept inside the try block so a ValueError does not bypass
+            # the finally clause that releases the per-chat lock.
+            try:
+                chat_id = int(msg.chat_id)
+            except ValueError:
+                raise SendError(f"Invalid chat_id: {msg.chat_id}")
             # Send voice messages first (if any)
             for voice_path in msg.voice:
                 await self._send_voice(chat_id, voice_path)
@@ -245,6 +246,14 @@ class TelegramChannel(BaseChannel):
                         # to sending a new message, and discard the stale ID.
                         self._placeholder_ids.pop(msg.chat_id, None)
                         logger.debug(f"Could not edit placeholder {placeholder_id}: {e}")
+                        # Delete the orphaned 💭 bubble so it doesn't stay visible.
+                        try:
+                            await self._app.bot.delete_message(
+                                chat_id=chat_id,
+                                message_id=placeholder_id,
+                            )
+                        except TelegramError:
+                            pass  # Already gone — nothing to clean up
 
                 await self._app.bot.send_message(
                     chat_id=chat_id,
