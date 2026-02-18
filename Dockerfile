@@ -138,8 +138,9 @@ RUN uv pip install --system --no-cache .
 WORKDIR /root/pocketfox
 RUN uv pip install --system --no-cache .
 
-# Claude Code environment
+# General environments
 ENV CLAUDE_CODE_USE_BEDROCK=0
+ENV GOG_KEYRING_BACKEND="file"
 
 # Default port for pocketfox gateway
 EXPOSE 18790
@@ -151,7 +152,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Switch to non-root user for runtime
 USER pocketfox
 ENV HOME=/home/pocketfox
-ENV PATH="/home/pocketfox/.local/bin:/home/pocketfox/.cargo/bin:${PATH}"
+ENV PATH="/home/pocketfox/.pocketfox/workspace/scripts:/home/pocketfox/.local/bin:/home/pocketfox/.cargo/bin:${PATH}"
 
 WORKDIR /home/pocketfox
 
