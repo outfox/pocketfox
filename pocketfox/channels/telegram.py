@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 from telegram import BotCommand, Update
-from telegram.error import NetworkError, TimedOut
+from telegram.error import NetworkError, TelegramError, TimedOut
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from pocketfox.bus.events import OutboundMessage
@@ -114,6 +114,7 @@ class TelegramChannel(BaseChannel):
         self._chat_ids: dict[str, int] = {}  # Map sender_id to chat_id for replies
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> typing loop task
         self._placeholder_ids: dict[str, int] = {}  # chat_id -> placeholder message_id
+        self._chat_locks: dict[str, asyncio.Lock] = {}  # per-chat lock to serialise processing
     
     async def start(self) -> None:
         """Start the Telegram bot with long polling."""
@@ -225,8 +226,9 @@ class TelegramChannel(BaseChannel):
                 # Convert markdown to Telegram HTML
                 html_content = _markdown_to_telegram_html(msg.content)
 
-                # Try to edit the 💭 placeholder if one exists for this chat
-                placeholder_id = self._placeholder_ids.pop(msg.chat_id, None)
+                # Use .get() so the ID is still available if the edit fails.
+                # We only .pop() after a confirmed success or in the error handler.
+                placeholder_id = self._placeholder_ids.get(msg.chat_id)
                 if placeholder_id:
                     try:
                         await self._app.bot.edit_message_text(
@@ -235,9 +237,13 @@ class TelegramChannel(BaseChannel):
                             text=html_content,
                             parse_mode="HTML"
                         )
+                        # Edit succeeded — remove the now-consumed placeholder ID.
+                        self._placeholder_ids.pop(msg.chat_id, None)
                         return
-                    except Exception as e:
+                    except TelegramError as e:
                         # Placeholder may have been deleted or expired — fall through
+                        # to sending a new message, and discard the stale ID.
+                        self._placeholder_ids.pop(msg.chat_id, None)
                         logger.debug(f"Could not edit placeholder {placeholder_id}: {e}")
 
                 await self._app.bot.send_message(
@@ -245,9 +251,21 @@ class TelegramChannel(BaseChannel):
                     text=html_content,
                     parse_mode="HTML"
                 )
+            else:
+                # Media/voice-only message — no text to edit the placeholder with.
+                # Delete the 💭 bubble so it does not remain as a stale orphan.
+                placeholder_id = self._placeholder_ids.pop(msg.chat_id, None)
+                if placeholder_id:
+                    try:
+                        await self._app.bot.delete_message(
+                            chat_id=chat_id,
+                            message_id=placeholder_id,
+                        )
+                    except TelegramError as e:
+                        logger.debug(f"Could not delete placeholder {placeholder_id}: {e}")
         except SendError:
             raise  # Re-raise our own errors
-        except Exception as e:
+        except TelegramError as e:
             # Fallback to plain text if HTML parsing fails
             logger.warning(f"HTML parse failed, falling back to plain text: {e}")
             try:
@@ -255,9 +273,14 @@ class TelegramChannel(BaseChannel):
                     chat_id=chat_id,
                     text=msg.content
                 )
-            except Exception as e2:
+            except TelegramError as e2:
                 logger.error(f"Error sending Telegram message: {e2}")
                 raise SendError(f"Telegram error: {e2}") from e2
+        finally:
+            # Release the per-chat lock so the next queued message can proceed.
+            lock = self._chat_locks.get(msg.chat_id)
+            if lock and lock.locked():
+                lock.release()
     
     async def _send_voice(self, chat_id: int, audio_path: str) -> None:
         """Send an audio file as a Telegram voice message.
@@ -561,9 +584,19 @@ class TelegramChannel(BaseChannel):
         can edit it in-place with the final response instead of posting a new
         message.  This is called from ``_handle_message`` *after* the access
         check passes, so denied senders never see the indicator.
+
+        A per-chat ``asyncio.Lock`` is acquired here and released in ``send()``
+        so that rapid back-to-back messages in the same chat are serialised and
+        cannot overwrite each other's placeholder entry.
         """
         if not self._app:
             return
+
+        # Acquire (or create) the per-chat lock so that only one message is
+        # in-flight at a time for this chat.  The lock is released in send().
+        if chat_id not in self._chat_locks:
+            self._chat_locks[chat_id] = asyncio.Lock()
+        await self._chat_locks[chat_id].acquire()
 
         try:
             sent = await self._app.bot.send_message(
