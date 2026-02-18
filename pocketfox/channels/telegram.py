@@ -113,6 +113,7 @@ class TelegramChannel(BaseChannel):
         self._app: Application | None = None
         self._chat_ids: dict[str, int] = {}  # Map sender_id to chat_id for replies
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> typing loop task
+        self._placeholder_ids: dict[str, int] = {}  # chat_id -> placeholder message_id
     
     async def start(self) -> None:
         """Start the Telegram bot with long polling."""
@@ -188,7 +189,13 @@ class TelegramChannel(BaseChannel):
     
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through Telegram.
-        
+
+        If a 💭 placeholder was sent when the message arrived, the final
+        text response edits that placeholder in-place (no "edited" label
+        in Telegram).  Voice/media attachments are always sent as new
+        messages because Telegram does not allow editing a text message
+        into a media message.
+
         Raises:
             SendError: If the message could not be delivered.
         """
@@ -217,6 +224,22 @@ class TelegramChannel(BaseChannel):
             if msg.content and msg.content.strip():
                 # Convert markdown to Telegram HTML
                 html_content = _markdown_to_telegram_html(msg.content)
+
+                # Try to edit the 💭 placeholder if one exists for this chat
+                placeholder_id = self._placeholder_ids.pop(msg.chat_id, None)
+                if placeholder_id:
+                    try:
+                        await self._app.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=placeholder_id,
+                            text=html_content,
+                            parse_mode="HTML"
+                        )
+                        return
+                    except Exception as e:
+                        # Placeholder may have been deleted or expired — fall through
+                        logger.debug(f"Could not edit placeholder {placeholder_id}: {e}")
+
                 await self._app.bot.send_message(
                     chat_id=chat_id,
                     text=html_content,
@@ -532,11 +555,25 @@ class TelegramChannel(BaseChannel):
         )
     
     async def _start_typing_indicator(self, chat_id: str) -> None:
-        """Start sending 'typing...' indicator for a chat.
-        
-        Overrides the base class method to provide Telegram-specific typing feedback.
-        This is called from _handle_message AFTER access check passes.
+        """Send a 💭 placeholder and start the typing loop.
+
+        The placeholder is stored in ``_placeholder_ids`` so that ``send()``
+        can edit it in-place with the final response instead of posting a new
+        message.  This is called from ``_handle_message`` *after* the access
+        check passes, so denied senders never see the indicator.
         """
+        if not self._app:
+            return
+
+        try:
+            sent = await self._app.bot.send_message(
+                chat_id=int(chat_id),
+                text="💭",
+            )
+            self._placeholder_ids[chat_id] = sent.message_id
+        except Exception as e:
+            logger.debug(f"Could not send 💭 placeholder for {chat_id}: {e}")
+
         self._start_typing(chat_id)
     
     def _start_typing(self, chat_id: str) -> None:
