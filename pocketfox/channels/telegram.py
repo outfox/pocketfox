@@ -213,7 +213,7 @@ class TelegramChannel(BaseChannel):
             try:
                 chat_id = int(msg.chat_id)
             except ValueError:
-                raise SendError(f"Invalid chat_id: {msg.chat_id}")
+                raise SendError(f"Invalid chat_id: {msg.chat_id}") from None
             # Send voice messages first (if any)
             for voice_path in msg.voice:
                 await self._send_voice(chat_id, voice_path)
@@ -613,7 +613,7 @@ class TelegramChannel(BaseChannel):
                 text="💭",
             )
             self._placeholder_ids[chat_id] = sent.message_id
-        except Exception as e:
+        except TelegramError as e:
             logger.debug(f"Could not send 💭 placeholder for {chat_id}: {e}")
 
         self._start_typing(chat_id)
