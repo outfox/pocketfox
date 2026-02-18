@@ -113,7 +113,8 @@ class TelegramChannel(BaseChannel):
         self._app: Application | None = None
         self._chat_ids: dict[str, int] = {}  # Map sender_id to chat_id for replies
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> typing loop task
-        self._placeholder_ids: dict[str, int] = {}  # chat_id -> placeholder message_id
+        self._placeholder_ids: dict[tuple[str, str], int] = {}  # (chat_id, message_id) -> placeholder message_id
+        self._chat_message_ids: dict[str, str] = {}  # chat_id -> latest inbound message_id (for composite key lookup)
         self._chat_locks: dict[str, asyncio.Lock] = {}  # per-chat lock to serialise processing
     
     async def start(self) -> None:
@@ -229,7 +230,8 @@ class TelegramChannel(BaseChannel):
 
                 # Use .get() so the ID is still available if the edit fails.
                 # We only .pop() after a confirmed success or in the error handler.
-                placeholder_id = self._placeholder_ids.get(msg.chat_id)
+                _key = (msg.chat_id, self._chat_message_ids.get(msg.chat_id, ""))
+                placeholder_id = self._placeholder_ids.get(_key)
                 if placeholder_id:
                     try:
                         await self._app.bot.edit_message_text(
@@ -239,12 +241,12 @@ class TelegramChannel(BaseChannel):
                             parse_mode="HTML"
                         )
                         # Edit succeeded — remove the now-consumed placeholder ID.
-                        self._placeholder_ids.pop(msg.chat_id, None)
+                        self._placeholder_ids.pop(_key, None)
                         return
                     except TelegramError as e:
                         # Placeholder may have been deleted or expired — fall through
                         # to sending a new message, and discard the stale ID.
-                        self._placeholder_ids.pop(msg.chat_id, None)
+                        self._placeholder_ids.pop(_key, None)
                         logger.debug(f"Could not edit placeholder {placeholder_id}: {e}")
                         # Delete the orphaned 💭 bubble so it doesn't stay visible.
                         try:
@@ -263,7 +265,8 @@ class TelegramChannel(BaseChannel):
             else:
                 # Media/voice-only message — no text to edit the placeholder with.
                 # Delete the 💭 bubble so it does not remain as a stale orphan.
-                placeholder_id = self._placeholder_ids.pop(msg.chat_id, None)
+                _key = (msg.chat_id, self._chat_message_ids.get(msg.chat_id, ""))
+                placeholder_id = self._placeholder_ids.pop(_key, None)
                 if placeholder_id:
                     try:
                         await self._app.bot.delete_message(
@@ -586,6 +589,34 @@ class TelegramChannel(BaseChannel):
             }
         )
     
+    async def _handle_message(
+        self,
+        sender_id: str,
+        chat_id: str,
+        content: str,
+        media: list[str] | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        """Override to thread the inbound ``message_id`` into the typing indicator.
+
+        The base-class implementation calls ``_start_typing_indicator(chat_id)``
+        without a ``message_id``.  Here we extract it from *metadata* first so
+        that the composite key ``(chat_id, message_id)`` can be stored in
+        ``_placeholder_ids``.
+        """
+        from typing import Any
+        message_id = str((metadata or {}).get("message_id", ""))
+        # Stash for _start_typing_indicator (called by super()) to pick up.
+        if message_id:
+            self._chat_message_ids[chat_id] = message_id
+        await super()._handle_message(
+            sender_id=sender_id,
+            chat_id=chat_id,
+            content=content,
+            media=media,
+            metadata=metadata,
+        )
+
     async def _start_typing_indicator(self, chat_id: str, content: str = "") -> None:
         """Send a 💭 placeholder and start the typing loop.
 
@@ -605,8 +636,13 @@ class TelegramChannel(BaseChannel):
         if not self._app:
             return
 
-        # Acquire (or create) the per-chat lock so that only one message is
-        # in-flight at a time for this chat.  The lock is released in send().
+        # Intentional cross-method lock: acquired here, released in send()'s
+        # finally block.  This serialises back-to-back messages for the same
+        # chat so that placeholder IDs cannot be overwritten mid-flight.
+        # Contract: every code path that calls _start_typing_indicator() MUST
+        # eventually invoke send() (or release the lock manually on error) to
+        # prevent a deadlock.  The finally clause in send() guarantees release
+        # even when an exception propagates, making the pattern safe in practice.
         if chat_id not in self._chat_locks:
             self._chat_locks[chat_id] = asyncio.Lock()
         await self._chat_locks[chat_id].acquire()
@@ -618,15 +654,16 @@ class TelegramChannel(BaseChannel):
                 import litellm
                 token_count = litellm.token_counter(model="gpt-4o", text=content)
                 token_str = f" `{token_count}tk`"
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("token count failed: %s", e)
 
         try:
             sent = await self._app.bot.send_message(
                 chat_id=int(chat_id),
                 text=f"{token_str} 💭" if token_str else "💭",
             )
-            self._placeholder_ids[chat_id] = sent.message_id
+            message_id = self._chat_message_ids.get(chat_id, "")
+            self._placeholder_ids[(chat_id, message_id)] = sent.message_id
         except TelegramError as e:
             logger.debug(f"Could not send 💭 placeholder for {chat_id}: {e}")
 
