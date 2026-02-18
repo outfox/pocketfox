@@ -586,7 +586,7 @@ class TelegramChannel(BaseChannel):
             }
         )
     
-    async def _start_typing_indicator(self, chat_id: str) -> None:
+    async def _start_typing_indicator(self, chat_id: str, content: str = "") -> None:
         """Send a 💭 placeholder and start the typing loop.
 
         The placeholder is stored in ``_placeholder_ids`` so that ``send()``
@@ -597,6 +597,10 @@ class TelegramChannel(BaseChannel):
         A per-chat ``asyncio.Lock`` is acquired here and released in ``send()``
         so that rapid back-to-back messages in the same chat are serialised and
         cannot overwrite each other's placeholder entry.
+
+        Args:
+            chat_id: The chat identifier to show the placeholder in.
+            content: The inbound message text, used to estimate token count.
         """
         if not self._app:
             return
@@ -607,10 +611,20 @@ class TelegramChannel(BaseChannel):
             self._chat_locks[chat_id] = asyncio.Lock()
         await self._chat_locks[chat_id].acquire()
 
+        # Estimate token count for the inbound message and show it in the placeholder.
+        token_str = ""
+        if content:
+            try:
+                import litellm
+                token_count = litellm.token_counter(model="gpt-4o", text=content)
+                token_str = f" `{token_count}tk`"
+            except Exception:
+                pass
+
         try:
             sent = await self._app.bot.send_message(
                 chat_id=int(chat_id),
-                text="💭",
+                text=f"{token_str} 💭" if token_str else "💭",
             )
             self._placeholder_ids[chat_id] = sent.message_id
         except TelegramError as e:
