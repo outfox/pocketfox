@@ -4,11 +4,12 @@ import json
 from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime
+from sysconfig import get_path
 from typing import Any
 
 from loguru import logger
 
-from pocketfox.utils.helpers import ensure_dir, safe_filename
+from pocketfox.utils.helpers import ensure_dir, safe_filename, get_paths
 
 
 @dataclass
@@ -67,7 +68,7 @@ class SessionManager:
     
     def __init__(self, workspace: Path):
         self.workspace = workspace
-        self.sessions_dir = ensure_dir(Path.home() / "sessions")
+        self.sessions_dir = ensure_dir( get_paths().data / "sessions")
         self._cache: dict[str, Session] = {}
     
     def _get_session_path(self, key: str) -> Path:
