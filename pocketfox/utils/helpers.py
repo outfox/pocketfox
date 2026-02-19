@@ -19,7 +19,11 @@ def get_agent_name() -> str:
 def get_data_path() -> Path:
     """Get the agent data directory (~/.config/pocketfox-<name>)."""
     name = get_agent_name()
-    return ensure_dir(Path.home() / ".config" / f"pocketfox-{name}")
+    if name != "pocketfox":
+        print(f"Using agent name '{name}' from PF_AGENT_NAME environment variable.")
+        return ensure_dir(Path.home() / ".config" / f"pocketfox-{name}")
+    else:
+        return ensure_dir(Path.home() / ".config" / "pocketfox")
 
 
 def get_workspace_path(workspace: str | None = None) -> Path:
