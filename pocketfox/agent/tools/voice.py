@@ -96,7 +96,7 @@ class VoiceTool(Tool):
         self.default_voice_id = default_voice_id or "JBFqnCBsd6RMkjVDRZzb"  # George (neutral English)
         self.default_stability = default_stability
         self.default_speed = default_speed
-        self.workspace = workspace or Path.home() / ".pocketfox" / "workspace"
+        self.workspace = workspace or Path.home() / "workspace"
         
         # Check if ffmpeg is available for metadata
         self._ffmpeg_path = shutil.which("ffmpeg")
