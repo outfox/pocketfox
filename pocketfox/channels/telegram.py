@@ -652,7 +652,7 @@ class TelegramChannel(BaseChannel):
             try:
                 import litellm
                 token_count = litellm.token_counter(model="gpt-4o", text=content)
-                token_str = f" `{token_count}tk`"
+                token_str = f" <code>{token_count // 1000}k</code>"
             except Exception as e:
                 logger.debug("token count failed: %s", e)
 
@@ -660,6 +660,7 @@ class TelegramChannel(BaseChannel):
             sent = await self._app.bot.send_message(
                 chat_id=int(chat_id),
                 text=f"{token_str} 💭" if token_str else "💭",
+                parse_mode="HTML",
             )
             message_id = self._chat_message_ids.get(chat_id, "")
             self._placeholder_ids[(chat_id, message_id)] = sent.message_id
