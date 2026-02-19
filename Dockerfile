@@ -150,10 +150,12 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD pocketfox status || exit 1
 
 # Switch to non-root user for runtime
-USER pocketfox
-ENV HOME=/home/pocketfox
-ENV PATH="/home/pocketfox/.pocketfox/workspace/scripts:/home/pocketfox/.local/bin:/home/pocketfox/.cargo/bin:${PATH}"
+ARG AGENT_NAME=pocketfox
 
+USER ${AGENT_NAME}
+ENV HOME=/home/${AGENT_NAME}
+ENV AGENT_NAME=${AGENT_NAME}
+ENV PATH="/home/${AGENT_NAME}/.${AGENT_NAME}/workspace/scripts:/home/${AGENT_NAME}/.local/bin:/home/${AGENT_NAME}/.cargo/bin:${PATH}"
 WORKDIR /home/pocketfox
 
 RUN git config --global user.name "Blue Duval" && \

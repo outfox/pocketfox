@@ -16,6 +16,7 @@ services:
       ssh:
         - default
       args:
+        AGENT_NAME: ${PF_AGENT_NAME:-pocketfox}
         CACHE_BUST: ${CACHE_BUST:-0}
     volumes:
       # Base workspace (personality files: SOUL.md, IDENTITY.md, memory/, skills/)
