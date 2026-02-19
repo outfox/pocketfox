@@ -13,7 +13,8 @@ from pocketfox.config.schema import Config
 
 def get_config_path() -> Path:
     """Get the default configuration file path."""
-    return Path.home() / ".pocketfox" / "config.toml"
+    from pocketfox.utils.helpers import get_data_path
+    return get_data_path() / "config.toml"
 
 
 def get_data_dir() -> Path:
@@ -36,7 +37,7 @@ def load_config(config_path: Path | None = None) -> Config:
     if config_path:
         return _load_from_path(config_path)
 
-    toml_path = Path.home() / ".pocketfox" / "config.toml"
+    toml_path = get_config_path()
 
     if toml_path.exists():
         return _load_from_path(toml_path)

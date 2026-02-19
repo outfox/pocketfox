@@ -14,18 +14,18 @@ class TestVoiceToolInit:
         """Test initialization with explicit API key."""
         tool = VoiceTool(api_key="test-key")
         assert tool.api_key == "test-key"
-        assert tool.default_voice_id == "5kN3CFEeRreSoAQlWcb9"  # Julia
-        assert tool.default_stability == 0.0
+        assert tool.default_voice_id == "JBFqnCBsd6RMkjVDRZzb"  # George (neutral English)
+        assert tool.default_stability == 0.5
     
     def test_init_with_custom_voice(self):
         """Test initialization with custom voice settings."""
         tool = VoiceTool(
             api_key="test-key",
             default_voice_id="custom-voice",
-            default_stability=0.5,
+            default_stability=0.8,
         )
         assert tool.default_voice_id == "custom-voice"
-        assert tool.default_stability == 0.5
+        assert tool.default_stability == 0.8
     
     def test_init_without_api_key(self):
         """Test initialization without API key."""

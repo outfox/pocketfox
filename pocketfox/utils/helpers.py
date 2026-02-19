@@ -10,25 +10,32 @@ def ensure_dir(path: Path) -> Path:
     return path
 
 
+def get_agent_name() -> str:
+    """Get the agent name from PF_AGENT_NAME env var, defaulting to 'pocketfox'."""
+    import os
+    return os.environ.get("PF_AGENT_NAME", "pocketfox")
+
+
 def get_data_path() -> Path:
-    """Get the pocketfox data directory (~/.pocketfox)."""
-    return ensure_dir(Path.home() / ".pocketfox")
+    """Get the agent data directory (~/.config/pocketfox-<name>)."""
+    name = get_agent_name()
+    return ensure_dir(Path.home() / ".config" / f"pocketfox-{name}")
 
 
 def get_workspace_path(workspace: str | None = None) -> Path:
     """
     Get the workspace path.
-    
+
     Args:
-        workspace: Optional workspace path. Defaults to ~/.pocketfox/workspace.
-    
+        workspace: Optional workspace path. Defaults to ~/.config/pocketfox-<name>/workspace.
+
     Returns:
         Expanded and ensured workspace path.
     """
     if workspace:
         path = Path(workspace).expanduser()
     else:
-        path = Path.home() / ".pocketfox" / "workspace"
+        path = get_data_path() / "workspace"
     return ensure_dir(path)
 
 
