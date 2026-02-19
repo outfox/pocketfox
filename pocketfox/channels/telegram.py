@@ -646,15 +646,17 @@ class TelegramChannel(BaseChannel):
             self._chat_locks[chat_id] = asyncio.Lock()
         await self._chat_locks[chat_id].acquire()
 
-        # Estimate token count for the inbound message and show it in the placeholder.
+        # Show token count from last turn (set by AgentLoop after LLM call).
         token_str = ""
-        if content:
-            try:
-                import litellm
-                token_count = litellm.token_counter(model="gpt-4o", text=content)
-                token_str = f" <code>{token_count // 1000}k</code>"
-            except Exception as e:
-                logger.debug("token count failed: %s", e)
+        try:
+            if self.session_manager is not None:
+                session_key = f"{self.name}:{chat_id}"
+                session = self.session_manager.get_or_create(session_key)
+                last_tokens = session.metadata.get("last_prompt_tokens")
+                if last_tokens:
+                    token_str = f" <code>{last_tokens // 1000}k</code>"
+        except Exception as e:
+            logger.debug("token count failed: %s", e)
 
         try:
             sent = await self._app.bot.send_message(
