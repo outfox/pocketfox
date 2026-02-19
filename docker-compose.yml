@@ -25,7 +25,6 @@ services:
       # Projects directory to allow her to work on her own code a little more persistently
       - ${HOME}/projects:/home/pocketfox/.pocketfox/workspace/projects
       # User config/credentials (in home directory, not workspace)
-      - ${HOME}/persistence-local/pocketfox:/home/pocketfox/.pocketfox
       - ${HOME}/persistence-local/config:/home/pocketfox/.config
       - ${HOME}/persistence-local/claude_auth:/home/pocketfox/.claude
       - ${HOME}/.ssh:/home/pocketfox/.ssh
