@@ -30,6 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl unzip && \
 # ── Final image ───────────────────────────────────────────────────────
 FROM python:3.12-slim AS final
 
+# Main parameters
+ARG AGENT_NAME=pocketfox
+
 # Metadata
 LABEL maintainer="Tiger Jove <tiger@tiger.pocketfox>"
 LABEL description="pocketfox, an autonomous artificial agent"
@@ -102,7 +105,6 @@ RUN useradd -m -u 1000 -s /bin/bash ${AGENT_NAME}
 # - ~/.config: NOT visible in sandbox (credentials like gog tokens)
 # When exec runs with sandbox_dir configured, bwrap isolates commands to only
 # see /workspace, preventing access to credentials and prompt files.
-ARG AGENT_NAME=pocketfox
 RUN mkdir -p /home/${AGENT_NAME}/workspace \
              /home/.config/${AGENT_NAME} \
              /home/${AGENT_NAME}/.claude \
