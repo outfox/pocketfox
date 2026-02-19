@@ -597,16 +597,15 @@ class TelegramChannel(BaseChannel):
         media: list[str] | None = None,
         metadata: dict | None = None,
     ) -> None:
-        """Override to thread the inbound ``message_id`` into the typing indicator.
+        """Override to stash the inbound ``message_id`` before calling super().
 
-        The base-class implementation calls ``_start_typing_indicator(chat_id)``
-        without a ``message_id``.  Here we extract it from *metadata* first so
-        that the composite key ``(chat_id, message_id)`` can be stored in
-        ``_placeholder_ids``.
+        The base class passes ``content`` to ``_start_typing_indicator`` directly,
+        but ``message_id`` is buried in *metadata* and not part of the base
+        signature.  We extract it here and stash it in ``_chat_message_ids`` so
+        that ``_start_typing_indicator`` can form the composite key
+        ``(chat_id, message_id)`` for ``_placeholder_ids``.
         """
-        from typing import Any
         message_id = str((metadata or {}).get("message_id", ""))
-        # Stash for _start_typing_indicator (called by super()) to pick up.
         if message_id:
             self._chat_message_ids[chat_id] = message_id
         await super()._handle_message(
