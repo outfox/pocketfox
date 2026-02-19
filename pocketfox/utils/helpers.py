@@ -39,7 +39,7 @@ def get_workspace_path(workspace: str | None = None) -> Path:
     if workspace:
         path = Path(workspace).expanduser()
     else:
-        path = get_data_path() / "workspace"
+        path = Path.home() / "workspace"
     return ensure_dir(path)
 
 
