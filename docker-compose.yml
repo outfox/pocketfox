@@ -1,8 +1,7 @@
-# pocketfox Docker Compose configuration
+# pocketfox - a small, yet clever agent
+# Docker Compose configuration
 # 
 # Usage:
-#   cp .env.example .env
-#   # Edit .env with your API keys
 #   docker compose up -d
 #
 
@@ -10,6 +9,7 @@ services:
   pocketfox:
     image: pocketfox:latest
     container_name: ${PF_AGENT_NAME:-pocketfox}
+    hostname: ${PF_AGENT_NAME:-pocketfox}
     restart: unless-stopped
     build:
       context: .
