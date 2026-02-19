@@ -124,7 +124,7 @@ class BaseChannel(ABC):
             return
         
         # Start typing indicator AFTER access check passes
-        await self._start_typing_indicator(chat_id)
+        await self._start_typing_indicator(chat_id, content=content)
         
         msg = InboundMessage(
             channel=self.name,
@@ -137,7 +137,7 @@ class BaseChannel(ABC):
         
         await self.bus.publish_inbound(msg)
     
-    async def _start_typing_indicator(self, chat_id: str) -> None:
+    async def _start_typing_indicator(self, chat_id: str, content: str = "") -> None:
         """
         Start a typing indicator for the given chat.
         
@@ -146,6 +146,7 @@ class BaseChannel(ABC):
         
         Args:
             chat_id: The chat identifier to show typing in.
+            content: The inbound message text, available for token estimation etc.
         """
         pass
     
