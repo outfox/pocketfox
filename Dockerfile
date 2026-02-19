@@ -156,7 +156,7 @@ USER ${AGENT_NAME}
 ENV HOME=/home/${AGENT_NAME}
 ENV AGENT_NAME=${AGENT_NAME}
 ENV PATH="/home/${AGENT_NAME}/.${AGENT_NAME}/workspace/scripts:/home/${AGENT_NAME}/.local/bin:/home/${AGENT_NAME}/.cargo/bin:${PATH}"
-WORKDIR /home/pocketfox
+WORKDIR /home/${AGENT_NAME}
 
 RUN git config --global user.name "Blue Duval" && \
     git config --global user.email "blue@tiger.blue"
