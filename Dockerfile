@@ -106,7 +106,7 @@ RUN useradd -m -u 1000 -s /bin/bash ${AGENT_NAME}
 # When exec runs with sandbox_dir configured, bwrap isolates commands to only
 # see /workspace, preventing access to credentials and prompt files.
 RUN mkdir -p /home/${AGENT_NAME}/workspace \
-             /home/.config/${AGENT_NAME} \
+             /home/${AGENT_NAME}/.config \
              /home/${AGENT_NAME}/.claude \
              /home/${AGENT_NAME}/.ssh && \
     chmod 700 /home/${AGENT_NAME}/.ssh && \
@@ -152,18 +152,16 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD pocketfox status || exit 1
 
 # Switch to non-root user for runtime
-ARG AGENT_NAME=pocketfox
-
 ENV HOME=/home/${AGENT_NAME}
 ENV AGENT_NAME=${AGENT_NAME}
-ENV PATH="/home/${AGENT_NAME}/.${AGENT_NAME}/workspace/scripts:/home/${AGENT_NAME}/.local/bin:/home/${AGENT_NAME}/.cargo/bin:${PATH}"
+ENV PATH="/home/${AGENT_NAME}/workspace/scripts:/home/${AGENT_NAME}/.local/bin:/home/${AGENT_NAME}/.cargo/bin:${PATH}"
 WORKDIR /home/${AGENT_NAME}
 
-RUN git config --global user.name "Blue Duval" && \
-    git config --global user.email "blue@tiger.blue"
+USER ${AGENT_NAME}
 
-# GitHub known_hosts for pocketfox user
-RUN ssh-keyscan github.com >> /home/${AGENT_NAME}/.ssh/known_hosts
+RUN git config --global user.name "Blue Duval" && \
+    git config --global user.email "blue@tiger.blue" && \
+    ssh-keyscan github.com >> /home/${AGENT_NAME}/.ssh/known_hosts
 
 # Default command: run the gateway
 CMD ["pocketfox", "gateway"]
