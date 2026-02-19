@@ -91,7 +91,8 @@ def _enable_line_editing() -> None:
     except Exception:
         pass
 
-    history_file = Path.home() / ".pocketfox" / "history" / "cli_history"
+    from pocketfox.utils.helpers import get_data_path
+    history_file = get_data_path() / "history" / "cli_history"
     history_file.parent.mkdir(parents=True, exist_ok=True)
     _HISTORY_FILE = history_file
 
@@ -187,9 +188,11 @@ def onboard():
     # Create default bootstrap files
     _create_workspace_templates(workspace)
     
-    console.print(f"\n{__logo__} pocketfox is ready!")
+    from pocketfox.utils.helpers import get_agent_name
+    name = get_agent_name()
+    console.print(f"\n{__logo__} pocketfox is ready! (agent: {name})")
     console.print("\nNext steps:")
-    console.print("  1. Add your API key to [cyan]~/.pocketfox/config.toml[/cyan]")
+    console.print(f"  1. Add your API key to [cyan]~/.config/pocketfox-{name}/config.toml[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
     console.print("  2. Chat: [cyan]pocketfox agent -m \"Hello!\"[/cyan]")
     console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/outfox/pocketfox#-chat-apps[/dim]")

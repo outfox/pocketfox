@@ -1,5 +1,6 @@
 # pocketfox configuration
-# Copy to ~/.pocketfox/config.toml and fill in your API keys.
+# Copy to ~/.config/pocketfox-<name>/config.toml and fill in your API keys.
+# The agent name is set via PF_AGENT_NAME env var (default: "pocketfox").
 # Docs: https://github.com/outfox/pocketfox
 
 [providers.openrouter]
