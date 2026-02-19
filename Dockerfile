@@ -163,7 +163,7 @@ RUN git config --global user.name "Blue Duval" && \
     git config --global user.email "blue@tiger.blue"
 
 # GitHub known_hosts for pocketfox user
-RUN ssh-keyscan github.com >> /home/pocketfox/.ssh/known_hosts
+RUN ssh-keyscan github.com >> /home/${AGENT_NAME}/.ssh/known_hosts
 
 # Default command: run the gateway
 CMD ["pocketfox", "gateway"]
