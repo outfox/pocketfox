@@ -1,3 +1,6 @@
+# Test Agent
+test_agent/
+
 # IDE + Agent clutter
 .claude
 CLAUDE.md

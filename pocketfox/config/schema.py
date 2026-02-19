@@ -162,11 +162,11 @@ class Config(BaseSettings):
     @property
     def workspace_path(self) -> Path:
         """Get expanded workspace path, resolved from PF_AGENT_NAME if not explicitly set."""
-        from pocketfox.utils.helpers import get_workspace_path
+        from pocketfox.utils.helpers import get_paths
         ws = self.agents.defaults.workspace
         if ws:
             return Path(ws).expanduser()
-        return get_workspace_path()
+        return get_paths().workspace
 
     def _match_provider(self, model: str | None = None) -> tuple["ProviderConfig | None", str | None]:
         """Match provider config and its registry name. Returns (config, spec_name)."""

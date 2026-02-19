@@ -199,7 +199,7 @@ class DiscordChannel(BaseChannel):
 
         content_parts = [content] if content else []
         media_paths: list[str] = []
-        media_dir = Path.home() / ".pocketfox" / "media"
+        media_dir = Path.home() / "media"
 
         for attachment in payload.get("attachments") or []:
             url = attachment.get("url")

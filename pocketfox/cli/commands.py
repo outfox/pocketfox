@@ -91,8 +91,8 @@ def _enable_line_editing() -> None:
     except Exception:
         pass
 
-    from pocketfox.utils.helpers import get_data_path
-    history_file = get_data_path() / "history" / "cli_history"
+    from pocketfox.utils.helpers import get_paths
+    history_file = get_paths().data / "history" / "cli_history"
     history_file.parent.mkdir(parents=True, exist_ok=True)
     _HISTORY_FILE = history_file
 
@@ -167,29 +167,29 @@ def onboard():
     """Initialize pocketfox configuration and workspace."""
     from pocketfox.config.loader import get_config_path, save_config
     from pocketfox.config.schema import Config
-    from pocketfox.utils.helpers import get_workspace_path
-    
+    from pocketfox.utils.helpers import get_paths
+
     config_path = get_config_path()
-    
+
     if config_path.exists():
         console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
         if not typer.confirm("Overwrite?"):
             raise typer.Exit()
-    
+
     # Create default config
     config = Config()
     save_config(config)
     console.print(f"[green]✓[/green] Created config at {config_path}")
-    
+
     # Create workspace
-    workspace = get_workspace_path()
+    paths = get_paths()
+    workspace = paths.workspace
     console.print(f"[green]✓[/green] Created workspace at {workspace}")
-    
+
     # Create default bootstrap files
     _create_workspace_templates(workspace)
-    
-    from pocketfox.utils.helpers import get_agent_name
-    name = get_agent_name()
+
+    name = paths.agent_name
     console.print(f"\n{__logo__} pocketfox is ready! (agent: {name})")
     console.print("\nNext steps:")
     console.print(f"  1. Add your API key to [cyan]~/.config/pocketfox-{name}/config.toml[/cyan]")
@@ -596,7 +596,7 @@ def _get_bridge_dir() -> Path:
     import subprocess
     
     # User's bridge location
-    user_bridge = Path.home() / ".pocketfox" / "bridge"
+    user_bridge = Path.home() / "bridge"
     
     # Check if already built
     if (user_bridge / "dist" / "index.js").exists():

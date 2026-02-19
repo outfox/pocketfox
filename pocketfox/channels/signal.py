@@ -351,7 +351,7 @@ class SignalChannel(BaseChannel):
         ext = self._get_extension(content_type, filename)
 
         # Create media directory
-        media_dir = Path.home() / ".pocketfox" / "media" / "signal"
+        media_dir = Path.home() / "media" / "signal"
         media_dir.mkdir(parents=True, exist_ok=True)
 
         # Use attachment ID as filename (truncated for sanity)

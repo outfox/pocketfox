@@ -298,7 +298,7 @@ def start_tty(
     
     # Readline setup (borrowed from commands.py)
     _readline = None
-    _history_file = Path.home() / ".pocketfox" / "history" / "tty_history"
+    _history_file = Path.home() / "history" / "tty_history"
     _history_file.parent.mkdir(parents=True, exist_ok=True)
     _using_libedit = False
     
