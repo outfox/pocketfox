@@ -220,7 +220,10 @@ class AgentLoop:
                 cache_write = usage.get("cache_creation_input_tokens", 0)
                 prompt = usage.get("prompt_tokens", 0)
                 completion = usage.get("completion_tokens", 0)
-                
+
+                # Store for typing indicator in next turn
+                session.metadata["last_prompt_tokens"] = prompt
+
                 if cache_read or cache_write:
                     logger.info(
                         f"Usage: {prompt} prompt, {completion} completion | "
@@ -344,7 +347,10 @@ class AgentLoop:
                 cache_write = usage.get("cache_creation_input_tokens", 0)
                 prompt = usage.get("prompt_tokens", 0)
                 completion = usage.get("completion_tokens", 0)
-                
+
+                # Store for typing indicator in next turn
+                session.metadata["last_prompt_tokens"] = prompt
+
                 if cache_read or cache_write:
                     logger.info(
                         f"Usage: {prompt} prompt, {completion} completion | "
