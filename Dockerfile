@@ -19,7 +19,7 @@ RUN go install github.com/steipete/sag/cmd/sag@latest
 
 
 # ── AWS CLI v2 builder ──────────────────────────────────────────────
-FROM python:3.12-slim AS aws-builder
+FROM python:3.13-slim AS aws-builder
 RUN apt-get update && apt-get install -y --no-install-recommends curl unzip && \
     curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip && \
     unzip -q /tmp/awscliv2.zip -d /tmp && \
@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl unzip && \
 
 
 # ── Final image ───────────────────────────────────────────────────────
-FROM python:3.12-slim AS final
+FROM python:3.13-slim AS final
 
 # Main parameters
 ARG AGENT_NAME=pocketfox

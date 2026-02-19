@@ -4,7 +4,6 @@ import os
 import tomllib
 from pathlib import Path
 from typing import Any
-from warnings import deprecated
 
 import tomli_w
 from loguru import logger
@@ -60,12 +59,6 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
     with open(path, "wb") as f:
         tomli_w.dump(data, f)
     os.chmod(path, 0o600)
-
-
-@deprecated("Use get_paths().data instead")
-def get_data_dir() -> Path:
-    """Get the pocketfox data directory."""
-    return get_paths().data
 
 
 # --- internals ---

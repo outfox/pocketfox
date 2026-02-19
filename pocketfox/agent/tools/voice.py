@@ -11,6 +11,7 @@ from typing import Any
 from loguru import logger
 
 from pocketfox.agent.tools.base import Tool
+from pocketfox.utils.helpers import get_paths
 
 
 class VoiceTool(Tool):
@@ -96,7 +97,7 @@ class VoiceTool(Tool):
         self.default_voice_id = default_voice_id or "JBFqnCBsd6RMkjVDRZzb"  # George (neutral English)
         self.default_stability = default_stability
         self.default_speed = default_speed
-        self.workspace = workspace or Path.home() / "workspace"
+        self.workspace = workspace or get_paths().workspace
         
         # Check if ffmpeg is available for metadata
         self._ffmpeg_path = shutil.which("ffmpeg")

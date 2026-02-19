@@ -326,7 +326,7 @@ def gateway(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the pocketfox gateway."""
-    from pocketfox.config.loader import load_config, get_data_dir
+    from pocketfox.config.loader import load_config
     from pocketfox.bus.queue import MessageBus
     from pocketfox.agent.loop import AgentLoop
     from pocketfox.channels.manager import ChannelManager
@@ -335,18 +335,19 @@ def gateway(
     from pocketfox.cron.types import CronJob
     from pocketfox.heartbeat.service import HeartbeatService
     from pocketfox.logging import configure_logging
-    
+    from pocketfox.utils.helpers import get_paths
+
     configure_logging(verbose=verbose)
-    
+
     console.print(f"{__logo__} Starting pocketfox gateway on port {port}...")
-    
+
     config = load_config()
     bus = MessageBus()
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
-    
+
     # Create cron service first (callback set after agent creation)
-    cron_store_path = get_data_dir() / "cron" / "jobs.json"
+    cron_store_path = get_paths().data / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
     
     # Create agent with cron service
@@ -679,12 +680,12 @@ def cron_list(
     all: bool = typer.Option(False, "--all", "-a", help="Include disabled jobs"),
 ):
     """List scheduled jobs."""
-    from pocketfox.config.loader import get_data_dir
     from pocketfox.cron.service import CronService
-    
-    store_path = get_data_dir() / "cron" / "jobs.json"
+    from pocketfox.utils.helpers import get_paths
+
+    store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
-    
+
     jobs = service.list_jobs(include_disabled=all)
     
     if not jobs:
@@ -733,10 +734,10 @@ def cron_add(
     channel: str = typer.Option(None, "--channel", help="Channel for delivery (e.g. 'telegram', 'whatsapp')"),
 ):
     """Add a scheduled job."""
-    from pocketfox.config.loader import get_data_dir
     from pocketfox.cron.service import CronService
     from pocketfox.cron.types import CronSchedule
-    
+    from pocketfox.utils.helpers import get_paths
+
     # Determine schedule type
     if every:
         schedule = CronSchedule(kind="every", every_ms=every * 1000)
@@ -750,9 +751,9 @@ def cron_add(
         console.print("[red]Error: Must specify --every, --cron, or --at[/red]")
         raise typer.Exit(1)
     
-    store_path = get_data_dir() / "cron" / "jobs.json"
+    store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
-    
+
     job = service.add_job(
         name=name,
         schedule=schedule,
@@ -770,12 +771,12 @@ def cron_remove(
     job_id: str = typer.Argument(..., help="Job ID to remove"),
 ):
     """Remove a scheduled job."""
-    from pocketfox.config.loader import get_data_dir
     from pocketfox.cron.service import CronService
-    
-    store_path = get_data_dir() / "cron" / "jobs.json"
+    from pocketfox.utils.helpers import get_paths
+
+    store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
-    
+
     if service.remove_job(job_id):
         console.print(f"[green]✓[/green] Removed job {job_id}")
     else:
@@ -788,12 +789,12 @@ def cron_enable(
     disable: bool = typer.Option(False, "--disable", help="Disable instead of enable"),
 ):
     """Enable or disable a job."""
-    from pocketfox.config.loader import get_data_dir
     from pocketfox.cron.service import CronService
-    
-    store_path = get_data_dir() / "cron" / "jobs.json"
+    from pocketfox.utils.helpers import get_paths
+
+    store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
-    
+
     job = service.enable_job(job_id, enabled=not disable)
     if job:
         status = "disabled" if disable else "enabled"
@@ -808,10 +809,10 @@ def cron_run(
     force: bool = typer.Option(False, "--force", "-f", help="Run even if disabled"),
 ):
     """Manually run a job."""
-    from pocketfox.config.loader import get_data_dir
     from pocketfox.cron.service import CronService
-    
-    store_path = get_data_dir() / "cron" / "jobs.json"
+    from pocketfox.utils.helpers import get_paths
+
+    store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
     
     async def run():

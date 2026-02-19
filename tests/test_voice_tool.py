@@ -27,11 +27,10 @@ class TestVoiceToolInit:
         assert tool.default_voice_id == "custom-voice"
         assert tool.default_stability == 0.8
     
-    def test_init_without_api_key(self):
+    def test_init_without_api_key(self, tmp_path):
         """Test initialization without API key."""
-        with patch.dict('os.environ', {}, clear=True):
-            tool = VoiceTool()
-            assert tool.api_key == ""
+        tool = VoiceTool(workspace=tmp_path)
+        assert tool.api_key == ""
 
 
 class TestVoiceToolExecute:
@@ -54,13 +53,12 @@ class TestVoiceToolExecute:
         assert "empty" in result.lower()
     
     @pytest.mark.asyncio
-    async def test_execute_no_sag(self):
-        """Test execute fails gracefully when sag is not installed."""
-        tool = VoiceTool(api_key="test-key")
-        tool._sag_path = None  # Simulate sag not found
-        result = await tool.execute(text="Hello")
+    async def test_execute_elevenlabs_not_installed(self, tmp_path):
+        """Test execute fails gracefully when elevenlabs SDK is not installed."""
+        tool = VoiceTool(api_key="test-key", workspace=tmp_path)
+        with patch.object(tool, "_get_client", side_effect=RuntimeError("elevenlabs package not installed")):
+            result = await tool.execute(text="Hello")
         assert "Error" in result
-        assert "sag" in result.lower()
 
 
 class TestVoiceToolRedact:
