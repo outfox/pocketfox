@@ -94,7 +94,7 @@ RUN wget https://github.com/nushell/nushell/releases/download/${NUSHELL_VERSION}
     rm -rf /tmp/nushell.tar.gz /tmp/nu-*
 
 # Create non-root user
-RUN useradd -m -u 1000 -s /bin/bash pocketfox
+RUN useradd -m -u 1000 -s /bin/bash ${AGENT_NAME}
 
 # Create directory structure for sandbox isolation:
 # - ~/.pocketfox/workspace: visible in sandbox as /workspace (read-write)
@@ -102,13 +102,13 @@ RUN useradd -m -u 1000 -s /bin/bash pocketfox
 # - ~/.config: NOT visible in sandbox (credentials like gog tokens)
 # When exec runs with sandbox_dir configured, bwrap isolates commands to only
 # see /workspace, preventing access to credentials and prompt files.
-RUN mkdir -p /home/pocketfox/.pocketfox/workspace \
-             /home/pocketfox/.pocketfox/prompt \
-             /home/pocketfox/.config \
-             /home/pocketfox/.claude \
-             /home/pocketfox/.ssh && \
-    chmod 700 /home/pocketfox/.ssh && \
-    chown -R pocketfox:pocketfox /home/pocketfox
+ARG AGENT_NAME=pocketfox
+RUN mkdir -p /home/${AGENT_NAME}/workspace \
+             /home/.config/${AGENT_NAME} \
+             /home/${AGENT_NAME}/.claude \
+             /home/${AGENT_NAME}/.ssh && \
+    chmod 700 /home/${AGENT_NAME}/.ssh && \
+    chown -R ${AGENT_NAME}:${AGENT_NAME} /home/${AGENT_NAME}
 
 # SSH known_hosts for root (for git clone during build)
 RUN mkdir -p /root/.ssh && \
@@ -152,7 +152,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Switch to non-root user for runtime
 ARG AGENT_NAME=pocketfox
 
-USER ${AGENT_NAME}
 ENV HOME=/home/${AGENT_NAME}
 ENV AGENT_NAME=${AGENT_NAME}
 ENV PATH="/home/${AGENT_NAME}/.${AGENT_NAME}/workspace/scripts:/home/${AGENT_NAME}/.local/bin:/home/${AGENT_NAME}/.cargo/bin:${PATH}"
