@@ -63,10 +63,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-ARG TZ=Europe/Berlin
-ENV TZ=${TZ}
-RUN ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime && \
-    echo "${TZ}" > /etc/timezone
+# TZ is intentionally NOT set at build time — inject via docker-compose.yml or
+# host environment at runtime (e.g. TZ=Europe/Berlin in .env).
+# tzdata is installed above so /usr/share/zoneinfo/* is available for zoneinfo.
+# Python, croniter, and modern tools read TZ from the environment directly.
 
 # Copy Go-built binaries from builder
 COPY --from=go-builder /gogcli/bin/gog /usr/local/bin/gog
