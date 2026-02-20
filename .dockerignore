@@ -6,15 +6,12 @@
 
 # Dev/test artifacts
 __pycache__
-*.pyc
 *.pyo
 *.pyd
 *.egg-info
 dist/
 build/
 tests/
-case/
-core_agent_lines.sh
 
 # Docs & assets (not needed at runtime; also avoids leaking internal dev/security notes)
 README.md
