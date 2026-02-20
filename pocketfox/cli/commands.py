@@ -304,7 +304,7 @@ def _make_provider(config):
     model = config.agents.defaults.model
     if not (p and p.api_key) and not model.startswith("bedrock/"):
         console.print("[red]Error: No API key configured.[/red]")
-        console.print("Set one in .config/${PF_AGENT_NAME}/config.toml under providers section")
+        console.print(f"Set one in .config/pocketfox/config.toml under providers section")
         raise typer.Exit(1)
     return LiteLLMProvider(
         api_key=p.api_key if p else None,
