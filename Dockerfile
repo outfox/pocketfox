@@ -60,7 +60,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     trash-cli \
     ca-certificates \
     bubblewrap \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=Europe/Berlin
+RUN ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime && \
+    echo "Europe/Berlin" > /etc/timezone
 
 # Copy Go-built binaries from builder
 COPY --from=go-builder /gogcli/bin/gog /usr/local/bin/gog
