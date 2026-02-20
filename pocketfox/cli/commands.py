@@ -334,7 +334,7 @@ def gateway(
     from pocketfox.cron.service import CronService
     from pocketfox.cron.types import CronJob
     from pocketfox.heartbeat.service import HeartbeatService
-    from pocketfox.logging import configure_logging
+    from pocketfox.log import configure_logging
     from pocketfox.utils.helpers import get_paths
 
     configure_logging(verbose=verbose)
