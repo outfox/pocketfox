@@ -30,16 +30,20 @@ def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
     if schedule.kind == "cron" and schedule.expr:
         try:
             import datetime
-            from zoneinfo import ZoneInfo
+            from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-            from croniter import croniter
+            from croniter import CroniterBadCronError, croniter
 
             tz = ZoneInfo(schedule.tz or "UTC")
             now_dt = datetime.datetime.now(tz)
             cron = croniter(schedule.expr, now_dt)
             next_dt = cron.get_next(datetime.datetime)
             return int(next_dt.timestamp() * 1000)
-        except Exception:
+        except ZoneInfoNotFoundError:
+            logger.warning(f"Unknown timezone '{schedule.tz}' in cron job — falling back to UTC", exc_info=True)
+            return None
+        except (ValueError, CroniterBadCronError):
+            logger.warning(f"Invalid cron expression '{schedule.expr}'", exc_info=True)
             return None
     
     return None
