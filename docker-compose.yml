@@ -18,10 +18,11 @@ services:
       args:
         AGENT_NAME: ${PF_AGENT_NAME:-pocketfox}
         CACHE_BUST: ${CACHE_BUST:-0}
+        TZ: ${TZ:-UTC}
 
     environment:
-      # Timezone
-      - TZ=Europe/Berlin
+      # Timezone — inherited from host env or .env, defaults to UTC
+      - TZ=${TZ:-UTC}
 
     env_file:
       - .env
