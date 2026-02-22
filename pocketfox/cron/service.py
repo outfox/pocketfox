@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import time
 import uuid
 from pathlib import Path
@@ -34,7 +35,7 @@ def _compute_next_run(schedule: CronSchedule, now_ms: int) -> int | None:
 
             from croniter import CroniterBadCronError, croniter
 
-            tz = ZoneInfo(schedule.tz or "UTC")
+            tz = ZoneInfo(schedule.tz or os.environ.get("TZ", "UTC"))
             now_dt = datetime.datetime.now(tz)
             cron = croniter(schedule.expr, now_dt)
             next_dt = cron.get_next(datetime.datetime)
