@@ -107,6 +107,16 @@ RUN wget https://imagemagick.org/archive/binaries/magick -O /tmp/magick.appimage
     ln -s /opt/imagemagick/usr/bin/magick /usr/local/bin/magick && \
     rm /tmp/magick.appimage
 
+# Install supercronic (container-friendly cron)
+ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.41/supercronic-linux-amd64 \
+    SUPERCRONIC_SHA1SUM=f70ad28d0d739a96dc9e2087ae370c257e79b8d7 \
+    SUPERCRONIC=supercronic-linux-amd64
+RUN curl -fsSLO "$SUPERCRONIC_URL" \
+    && echo "${SUPERCRONIC_SHA1SUM} ${SUPERCRONIC}" | sha1sum -c - \
+    && chmod +x "$SUPERCRONIC" \
+    && mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}" \
+    && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
+
 # Install Nushell (pinned version)
 ENV NUSHELL_VERSION=0.102.0
 RUN wget https://github.com/nushell/nushell/releases/download/${NUSHELL_VERSION}/nu-${NUSHELL_VERSION}-x86_64-unknown-linux-musl.tar.gz -O /tmp/nushell.tar.gz && \
@@ -181,5 +191,12 @@ RUN git config --global user.name "Blue Duval" && \
     git config --global user.email "blue@tiger.blue" && \
     ssh-keyscan github.com >> /home/${AGENT_NAME}/.ssh/known_hosts
 
-# Default command: run the gateway
-CMD ["pocketfox", "gateway"]
+# Scheduled tasks (supercronic crontab)
+RUN mkdir -p /home/${AGENT_NAME}/.config/pocketfox
+COPY --chown=${AGENT_NAME}:${AGENT_NAME} crontab /home/${AGENT_NAME}/.config/pocketfox/crontab
+
+# Entrypoint: supercronic + pocketfox gateway
+COPY --chown=${AGENT_NAME}:${AGENT_NAME} entrypoint.sh /home/${AGENT_NAME}/entrypoint.sh
+RUN chmod +x /home/${AGENT_NAME}/entrypoint.sh
+
+CMD ["/bin/bash", "-c", "exec ${HOME}/entrypoint.sh"]
