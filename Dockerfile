@@ -87,6 +87,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_25.x | bash - \
 # Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
+# qmd — hybrid semantic search engine for agent memory
+# Models (~2GB) are downloaded on first use to ~/.cache/qmd/models/
+RUN npm install -g @tobilu/qmd
+
 # Install ImageMagick 7 (AppImage extracted)
 RUN wget https://imagemagick.org/archive/binaries/magick -O /tmp/magick.appimage && \
     chmod +x /tmp/magick.appimage && \
