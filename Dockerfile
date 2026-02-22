@@ -89,7 +89,12 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # qmd — hybrid semantic search engine for agent memory
 # Models (~2GB) are downloaded on first use to ~/.cache/qmd/models/
-RUN npm install -g @tobilu/qmd
+# build-essential is required to compile better-sqlite3 (native addon)
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && npm install -g @tobilu/qmd \
+    && apt-get purge -y build-essential \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install ImageMagick 7 (AppImage extracted)
 RUN wget https://imagemagick.org/archive/binaries/magick -O /tmp/magick.appimage && \
