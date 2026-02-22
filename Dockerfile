@@ -91,10 +91,13 @@ RUN npm install -g @anthropic-ai/claude-code
 # Models (~2GB) are downloaded on first use to ~/.cache/qmd/models/
 # build-essential is required to compile better-sqlite3 (native addon);
 # installed BEFORE npm install, purged afterwards to keep the image lean.
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
-    && npm install -g @tobilu/qmd \
-    && apt-get purge -y --auto-remove build-essential \
-    && rm -rf /var/lib/apt/lists/*
+RUN <<EOF
+apt-get update
+apt-get install -y --no-install-recommends build-essential
+npm install -g @tobilu/qmd
+apt-get purge -y --auto-remove build-essential
+rm -rf /var/lib/apt/lists/*
+EOF
 
 # Install ImageMagick 7 (AppImage extracted)
 RUN wget https://imagemagick.org/archive/binaries/magick -O /tmp/magick.appimage && \
