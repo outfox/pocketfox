@@ -79,8 +79,8 @@ COPY --from=aws-builder /usr/local/bin/aws /usr/local/bin/aws
 # Install uv (Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Node.js 25 (Current) — required for qmd and Claude Code CLI
-RUN curl -fsSL https://deb.nodesource.com/setup_25.x | bash - \
+# Node.js 24 LTS — required for qmd and Claude Code CLI
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
@@ -89,11 +89,11 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # qmd — hybrid semantic search engine for agent memory
 # Models (~2GB) are downloaded on first use to ~/.cache/qmd/models/
-# build-essential is required to compile better-sqlite3 (native addon)
+# build-essential is required to compile better-sqlite3 (native addon);
+# installed BEFORE npm install, purged afterwards to keep the image lean.
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
     && npm install -g @tobilu/qmd \
-    && apt-get purge -y build-essential \
-    && apt-get autoremove -y \
+    && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ImageMagick 7 (AppImage extracted)
