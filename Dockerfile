@@ -79,7 +79,7 @@ COPY --from=aws-builder /usr/local/bin/aws /usr/local/bin/aws
 # Install uv (Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Node.js 24 (LTS "Krypton") — required for qmd and Claude Code CLI
+# Node.js 25 (Current) — required for qmd and Claude Code CLI
 RUN curl -fsSL https://deb.nodesource.com/setup_25.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
