@@ -195,4 +195,4 @@ COPY --chown=${AGENT_NAME}:${AGENT_NAME} crontab /home/${AGENT_NAME}/.config/poc
 COPY --chown=${AGENT_NAME}:${AGENT_NAME} entrypoint.sh /home/${AGENT_NAME}/entrypoint.sh
 RUN chmod +x /home/${AGENT_NAME}/entrypoint.sh
 
-ENTRYPOINT ["sh", "-c", "exec \"${HOME}/entrypoint.sh\""]
+ENTRYPOINT ["sh", "-c", "exec \"${HOME}/entrypoint.sh\" \"$@\"", "--"]
