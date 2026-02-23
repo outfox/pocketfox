@@ -22,5 +22,8 @@ _term() {
 }
 trap _term TERM INT
 
+# Run qmd update (fail the container if this errors out)
+qmd update
+
 # Start pocketfox gateway in the foreground
 exec pocketfox gateway
