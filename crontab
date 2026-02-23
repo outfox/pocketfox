@@ -1,0 +1,5 @@
+# pocketfox scheduled tasks
+# Format: min hour dom month dow command
+
+# Update qmd search index hourly
+50 * * * * qmd update

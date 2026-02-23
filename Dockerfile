@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV CGO_ENABLED=1
 RUN go install github.com/steipete/sag/cmd/sag@latest
 
+# Build supercronic (container-friendly cron daemon) - pure Go, no CGO needed
+ENV CGO_ENABLED=0
+RUN go install github.com/aptible/supercronic@latest
+
 
 # ── AWS CLI v2 builder ──────────────────────────────────────────────
 FROM python:3.13-slim AS aws-builder
@@ -71,6 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Go-built binaries from builder
 COPY --from=go-builder /gogcli/bin/gog /usr/local/bin/gog
 COPY --from=go-builder /go/bin/sag /usr/local/bin/sag
+COPY --from=go-builder /go/bin/supercronic /usr/local/bin/supercronic
 
 # Copy AWS CLI v2 from builder
 COPY --from=aws-builder /usr/local/aws-cli/ /usr/local/aws-cli/
@@ -106,6 +111,7 @@ RUN wget https://imagemagick.org/archive/binaries/magick -O /tmp/magick.appimage
     mv squashfs-root /opt/imagemagick && \
     ln -s /opt/imagemagick/usr/bin/magick /usr/local/bin/magick && \
     rm /tmp/magick.appimage
+
 
 # Install Nushell (pinned version)
 ENV NUSHELL_VERSION=0.102.0
@@ -181,5 +187,12 @@ RUN git config --global user.name "Blue Duval" && \
     git config --global user.email "blue@tiger.blue" && \
     ssh-keyscan github.com >> /home/${AGENT_NAME}/.ssh/known_hosts
 
-# Default command: run the gateway
-CMD ["pocketfox", "gateway"]
+# Scheduled tasks (supercronic crontab)
+RUN mkdir -p /home/${AGENT_NAME}/.config/pocketfox
+COPY --chown=${AGENT_NAME}:${AGENT_NAME} crontab /home/${AGENT_NAME}/.config/pocketfox/crontab
+
+# Entrypoint: supercronic + pocketfox gateway
+COPY --chown=${AGENT_NAME}:${AGENT_NAME} entrypoint.sh /home/${AGENT_NAME}/entrypoint.sh
+RUN chmod +x /home/${AGENT_NAME}/entrypoint.sh
+
+ENTRYPOINT ["sh", "-c", "exec \"${HOME}/entrypoint.sh\" \"$@\"", "--"]
