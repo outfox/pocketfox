@@ -17,6 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV CGO_ENABLED=1
 RUN go install github.com/steipete/sag/cmd/sag@latest
 
+# Build supercronic (container-friendly cron daemon) - pure Go, no CGO needed
+ENV CGO_ENABLED=0
+RUN go install github.com/aptible/supercronic@latest
+
 
 # ── AWS CLI v2 builder ──────────────────────────────────────────────
 FROM python:3.13-slim AS aws-builder
@@ -71,6 +75,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy Go-built binaries from builder
 COPY --from=go-builder /gogcli/bin/gog /usr/local/bin/gog
 COPY --from=go-builder /go/bin/sag /usr/local/bin/sag
+COPY --from=go-builder /go/bin/supercronic /usr/local/bin/supercronic
 
 # Copy AWS CLI v2 from builder
 COPY --from=aws-builder /usr/local/aws-cli/ /usr/local/aws-cli/
@@ -107,15 +112,6 @@ RUN wget https://imagemagick.org/archive/binaries/magick -O /tmp/magick.appimage
     ln -s /opt/imagemagick/usr/bin/magick /usr/local/bin/magick && \
     rm /tmp/magick.appimage
 
-# Install supercronic (container-friendly cron)
-ENV SUPERCRONIC_URL=https://github.com/aptible/supercronic/releases/download/v0.2.41/supercronic-linux-amd64 \
-    SUPERCRONIC_SHA1SUM=f70ad28d0d739a96dc9e2087ae370c257e79b8d7 \
-    SUPERCRONIC=supercronic-linux-amd64
-RUN curl -fsSLO "$SUPERCRONIC_URL" \
-    && echo "${SUPERCRONIC_SHA1SUM} ${SUPERCRONIC}" | sha1sum -c - \
-    && chmod +x "$SUPERCRONIC" \
-    && mv "$SUPERCRONIC" "/usr/local/bin/${SUPERCRONIC}" \
-    && ln -s "/usr/local/bin/${SUPERCRONIC}" /usr/local/bin/supercronic
 
 # Install Nushell (pinned version)
 ENV NUSHELL_VERSION=0.102.0
