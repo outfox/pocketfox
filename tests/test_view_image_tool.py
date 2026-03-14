@@ -7,12 +7,18 @@ from pathlib import Path
 from pocketfox.agent.tools.view_image import ViewImageTool, MAX_IMAGE_SIZE, SUPPORTED_TYPES
 
 
-# Minimal valid 1x1 pixel images for testing
+# Minimal valid 1x1 pixel images for testing (with correct magic bytes)
 TINY_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 )
 TINY_GIF = base64.b64decode(
     "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+)
+TINY_JPEG = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2Q=="
+)
+TINY_WEBP = base64.b64decode(
+    "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAUAlpAADcAD++5QAAA=="
 )
 
 
@@ -90,15 +96,27 @@ class TestViewImageToolExecute:
 
     @pytest.mark.asyncio
     async def test_view_jpeg(self, tmp_path):
-        """Test viewing a JPEG image (using PNG bytes — MIME is guessed from extension)."""
+        """Test viewing a JPEG image."""
         img = tmp_path / "photo.jpg"
-        img.write_bytes(TINY_PNG)  # Content doesn't matter, MIME from extension
+        img.write_bytes(TINY_JPEG)
 
         tool = ViewImageTool(allowed_dir=tmp_path)
         result = await tool.execute(path=str(img))
 
         assert isinstance(result, list)
         assert result[0]["source"]["media_type"] == "image/jpeg"
+
+    @pytest.mark.asyncio
+    async def test_view_webp(self, tmp_path):
+        """Test viewing a WebP image."""
+        img = tmp_path / "photo.webp"
+        img.write_bytes(TINY_WEBP)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        assert isinstance(result, list)
+        assert result[0]["source"]["media_type"] == "image/webp"
 
     @pytest.mark.asyncio
     async def test_view_with_question(self, tmp_path):
@@ -158,8 +176,8 @@ class TestViewImageToolExecute:
     async def test_file_too_large(self, tmp_path):
         """Test error on oversized file."""
         img = tmp_path / "huge.png"
-        # Write just enough to exceed the limit check (don't actually allocate 20MB)
-        img.write_bytes(b"\x00" * (MAX_IMAGE_SIZE + 1))
+        # PNG magic header + padding to exceed the size limit
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * MAX_IMAGE_SIZE)
 
         tool = ViewImageTool(allowed_dir=tmp_path)
         result = await tool.execute(path=str(img))
@@ -179,7 +197,7 @@ class TestViewImageToolSecurity:
         result = await tool.execute(path="/etc/passwd")
 
         assert isinstance(result, str)
-        assert "error" in result.lower()
+        assert "outside allowed directory" in result.lower()
 
     @pytest.mark.asyncio
     async def test_path_traversal_blocked(self, tmp_path):
@@ -195,7 +213,23 @@ class TestViewImageToolSecurity:
         result = await tool.execute(path=str(safe_dir / ".." / "secret.png"))
 
         assert isinstance(result, str)
-        assert "error" in result.lower()
+        assert "outside allowed directory" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_sibling_prefix_bypass_blocked(self, tmp_path):
+        """Test that sibling-prefix paths are rejected (e.g., safe vs safe_evil)."""
+        safe_dir = tmp_path / "safe"
+        safe_dir.mkdir()
+        sibling = tmp_path / "safe_evil"
+        sibling.mkdir()
+        outside = sibling / "secret.png"
+        outside.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=safe_dir)
+        result = await tool.execute(path=str(outside))
+
+        assert isinstance(result, str)
+        assert "outside allowed directory" in result.lower()
 
     @pytest.mark.asyncio
     async def test_no_allowed_dir_permits_all(self, tmp_path):
@@ -209,11 +243,13 @@ class TestViewImageToolSecurity:
         assert isinstance(result, list)  # Success
 
     @pytest.mark.asyncio
-    async def test_resolve_path_expands_user(self, tmp_path):
-        """Test that _resolve_path handles path resolution."""
+    async def test_resolve_path_expands_user(self, tmp_path, monkeypatch):
+        """Test that _resolve_path expands ~ to home directory."""
+        monkeypatch.setenv("HOME", str(tmp_path))
         tool = ViewImageTool()
-        resolved = tool._resolve_path(str(tmp_path / "test.png"))
+        resolved = tool._resolve_path("~/test.png")
         assert resolved.is_absolute()
+        assert str(resolved).startswith(str(tmp_path))
 
 
 class TestViewImageToolContentBlocks:
