@@ -31,6 +31,7 @@ services:
     volumes:
       - ${HOME}/persistence-local/workspace:/home/${PF_AGENT_NAME}/workspace
       - ${HOME}/persistence-local/avatars:/home/${PF_AGENT_NAME}/workspace/avatars
+      - ${HOME}/Obsidian/Blue:/home/${PF_AGENT_NAME}/obsidian
       - ${HOME}/projects-blue:/home/${PF_AGENT_NAME}/workspace/projects
       - ${HOME}/persistence-local/config:/home/${PF_AGENT_NAME}/.config
       - ${HOME}/persistence-local/claude_auth:/home/${PF_AGENT_NAME}/.claude
