@@ -48,7 +48,14 @@ class Session:
             List of messages in LLM format.
         """
         # Get recent messages (-1 means all)
-        recent = self.messages if max_messages == -1 else (self.messages[-max_messages:] if len(self.messages) > max_messages else self.messages)
+        if max_messages == -1:
+            recent = self.messages
+        elif max_messages == 0:
+            recent = []
+        elif max_messages < -1:
+            raise ValueError("max_messages must be -1 or a non-negative integer")
+        else:
+            recent = self.messages[-max_messages:]
         
         # Convert to LLM format (just role and content)
         return [{"role": m["role"], "content": m["content"]} for m in recent]
