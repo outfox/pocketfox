@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -496,6 +497,7 @@ class TelegramChannel(BaseChannel):
             return
 
         session.messages = session.messages[-n:]
+        session.updated_at = datetime.now()
         self.session_manager.save(session)
 
         removed = before - len(session.messages)
