@@ -497,9 +497,9 @@ class TelegramChannel(BaseChannel):
             return
 
         session.messages = session.messages[-n:]
+        session.messages = session.messages[-n:]
         session.updated_at = datetime.now()
         self.session_manager.save(session)
-
         removed = before - len(session.messages)
         logger.info(f"Session truncated for {session_key}: {before} → {len(session.messages)} messages ({removed} removed)")
         await update.message.reply_text(
