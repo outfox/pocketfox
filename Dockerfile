@@ -21,6 +21,10 @@ RUN go install github.com/steipete/sag/cmd/sag@latest
 ENV CGO_ENABLED=0
 RUN go install github.com/aptible/supercronic@latest
 
+# Build notesmd-cli (Obsidian vault CLI - link repair, note management)
+RUN git clone https://github.com/Yakitrak/notesmd-cli.git /notesmd-cli && \
+    cd /notesmd-cli && go build -o notesmd-cli .
+
 
 # ── AWS CLI v2 builder ──────────────────────────────────────────────
 FROM python:3.13-slim AS aws-builder
@@ -76,6 +80,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=go-builder /gogcli/bin/gog /usr/local/bin/gog
 COPY --from=go-builder /go/bin/sag /usr/local/bin/sag
 COPY --from=go-builder /go/bin/supercronic /usr/local/bin/supercronic
+COPY --from=go-builder /notesmd-cli/notesmd-cli /usr/local/bin/notesmd-cli
 
 # Copy AWS CLI v2 from builder
 COPY --from=aws-builder /usr/local/aws-cli/ /usr/local/aws-cli/
