@@ -18,6 +18,7 @@ from pocketfox.agent.tools.web import WebSearchTool, WebFetchTool
 from pocketfox.agent.tools.message import MessageTool
 from pocketfox.agent.tools.spawn import SpawnTool
 from pocketfox.agent.tools.cron import CronTool
+from pocketfox.agent.tools.view_image import ViewImageTool
 from pocketfox.agent.tools.voice import VoiceTool
 from pocketfox.agent.subagent import SubagentManager
 from pocketfox.session.manager import SessionManager
@@ -97,6 +98,9 @@ class AgentLoop:
             sandbox_dir=self.exec_config.sandbox_dir,
             sandbox_readonly_paths=self.exec_config.sandbox_readonly_paths,
         ))
+        
+        # Vision tool (view images from filesystem)
+        self.tools.register(ViewImageTool(allowed_dir=allowed_dir))
         
         # Web tools
         self.tools.register(WebSearchTool(api_key=self.brave_api_key))
