@@ -491,7 +491,7 @@ class TelegramChannel(BaseChannel):
 
         if before <= n:
             await update.message.reply_text(
-                f"ℹ️ Nothing to truncate — conversation has {before} message(s), requested {n}."
+                f"(i) Nothing to truncate — conversation has {before} message(s), requested {n}."
             )
             return
 
