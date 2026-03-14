@@ -1,0 +1,253 @@
+"""Tests for the ViewImageTool."""
+
+import base64
+import pytest
+from pathlib import Path
+
+from pocketfox.agent.tools.view_image import ViewImageTool, MAX_IMAGE_SIZE, SUPPORTED_TYPES
+
+
+# Minimal valid 1x1 pixel images for testing
+TINY_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+TINY_GIF = base64.b64decode(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+)
+
+
+class TestViewImageToolInit:
+    """Tests for ViewImageTool initialization."""
+
+    def test_init_default(self):
+        """Test initialization with defaults."""
+        tool = ViewImageTool()
+        assert tool._allowed_dir is None
+
+    def test_init_with_allowed_dir(self, tmp_path):
+        """Test initialization with allowed directory."""
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        assert tool._allowed_dir == tmp_path
+
+
+class TestViewImageToolSchema:
+    """Tests for ViewImageTool schema and metadata."""
+
+    def test_name(self):
+        tool = ViewImageTool()
+        assert tool.name == "view_image"
+
+    def test_description(self):
+        tool = ViewImageTool()
+        assert "image" in tool.description.lower()
+
+    def test_required_params(self):
+        tool = ViewImageTool()
+        assert "path" in tool.parameters["required"]
+
+    def test_optional_question_param(self):
+        tool = ViewImageTool()
+        assert "question" in tool.parameters["properties"]
+        assert "question" not in tool.parameters["required"]
+
+
+class TestViewImageToolExecute:
+    """Tests for ViewImageTool.execute()."""
+
+    @pytest.mark.asyncio
+    async def test_view_png(self, tmp_path):
+        """Test viewing a PNG image returns multimodal content blocks."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+        # Image block
+        assert result[0]["type"] == "image"
+        assert result[0]["source"]["media_type"] == "image/png"
+        assert result[0]["source"]["type"] == "base64"
+        assert len(result[0]["source"]["data"]) > 0
+
+        # Text block
+        assert result[1]["type"] == "text"
+        assert "test.png" in result[1]["text"]
+
+    @pytest.mark.asyncio
+    async def test_view_gif(self, tmp_path):
+        """Test viewing a GIF image."""
+        img = tmp_path / "test.gif"
+        img.write_bytes(TINY_GIF)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        assert isinstance(result, list)
+        assert result[0]["source"]["media_type"] == "image/gif"
+
+    @pytest.mark.asyncio
+    async def test_view_jpeg(self, tmp_path):
+        """Test viewing a JPEG image (using PNG bytes — MIME is guessed from extension)."""
+        img = tmp_path / "photo.jpg"
+        img.write_bytes(TINY_PNG)  # Content doesn't matter, MIME from extension
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        assert isinstance(result, list)
+        assert result[0]["source"]["media_type"] == "image/jpeg"
+
+    @pytest.mark.asyncio
+    async def test_view_with_question(self, tmp_path):
+        """Test that question is included in the text block."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img), question="What color is this?")
+
+        text_block = result[1]
+        assert "What color is this?" in text_block["text"]
+
+    @pytest.mark.asyncio
+    async def test_file_not_found(self, tmp_path):
+        """Test error on missing file."""
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(tmp_path / "nonexistent.png"))
+
+        assert isinstance(result, str)
+        assert "not found" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_not_a_file(self, tmp_path):
+        """Test error when path is a directory."""
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(tmp_path))
+
+        assert isinstance(result, str)
+        assert "not a file" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_unsupported_type(self, tmp_path):
+        """Test error on unsupported file type."""
+        txt = tmp_path / "notes.txt"
+        txt.write_text("not an image")
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(txt))
+
+        assert isinstance(result, str)
+        assert "unsupported" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_unsupported_image_type_svg(self, tmp_path):
+        """Test error on SVG (not supported by Claude vision)."""
+        svg = tmp_path / "icon.svg"
+        svg.write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(svg))
+
+        assert isinstance(result, str)
+        assert "unsupported" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_file_too_large(self, tmp_path):
+        """Test error on oversized file."""
+        img = tmp_path / "huge.png"
+        # Write just enough to exceed the limit check (don't actually allocate 20MB)
+        img.write_bytes(b"\x00" * (MAX_IMAGE_SIZE + 1))
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        assert isinstance(result, str)
+        assert "too large" in result.lower()
+
+
+class TestViewImageToolSecurity:
+    """Tests for path validation and security."""
+
+    @pytest.mark.asyncio
+    async def test_path_outside_allowed_dir(self, tmp_path):
+        """Test that paths outside allowed_dir are rejected."""
+        tool = ViewImageTool(allowed_dir=tmp_path / "safe")
+
+        result = await tool.execute(path="/etc/passwd")
+
+        assert isinstance(result, str)
+        assert "error" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_blocked(self, tmp_path):
+        """Test that path traversal attempts are blocked."""
+        safe_dir = tmp_path / "safe"
+        safe_dir.mkdir()
+
+        # Put an image outside the safe dir
+        outside = tmp_path / "secret.png"
+        outside.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=safe_dir)
+        result = await tool.execute(path=str(safe_dir / ".." / "secret.png"))
+
+        assert isinstance(result, str)
+        assert "error" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_no_allowed_dir_permits_all(self, tmp_path):
+        """Test that without allowed_dir, any path is permitted."""
+        img = tmp_path / "anywhere.png"
+        img.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool()  # No allowed_dir
+        result = await tool.execute(path=str(img))
+
+        assert isinstance(result, list)  # Success
+
+    @pytest.mark.asyncio
+    async def test_resolve_path_expands_user(self, tmp_path):
+        """Test that _resolve_path handles path resolution."""
+        tool = ViewImageTool()
+        resolved = tool._resolve_path(str(tmp_path / "test.png"))
+        assert resolved.is_absolute()
+
+
+class TestViewImageToolContentBlocks:
+    """Tests for the structure of returned content blocks."""
+
+    @pytest.mark.asyncio
+    async def test_image_block_structure(self, tmp_path):
+        """Test that image block has correct Anthropic structure."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        image_block = result[0]
+        assert image_block["type"] == "image"
+        assert "source" in image_block
+        assert image_block["source"]["type"] == "base64"
+        assert image_block["source"]["media_type"] in SUPPORTED_TYPES
+        assert isinstance(image_block["source"]["data"], str)
+
+        # Verify base64 is valid
+        decoded = base64.b64decode(image_block["source"]["data"])
+        assert decoded == TINY_PNG
+
+    @pytest.mark.asyncio
+    async def test_text_block_structure(self, tmp_path):
+        """Test that text block has correct structure."""
+        img = tmp_path / "photo.png"
+        img.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)
+        result = await tool.execute(path=str(img))
+
+        text_block = result[1]
+        assert text_block["type"] == "text"
+        assert "photo.png" in text_block["text"]
