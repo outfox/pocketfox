@@ -47,15 +47,15 @@ class Session:
         Returns:
             List of messages in LLM format.
         """
-        # Get recent messages (-1 means all)
-        if max_messages == -1:
+        # Get recent messages (-1 means all, 0 means none, >0 means last N)
+        if max_messages < -1:
+            raise ValueError(f"max_messages must be -1 (all), 0 (none), or a positive integer; got {max_messages}")
+        elif max_messages == -1:
             recent = self.messages
         elif max_messages == 0:
             recent = []
-        elif max_messages < -1:
-            raise ValueError("max_messages must be -1 or a non-negative integer")
         else:
-            recent = self.messages[-max_messages:]
+            recent = self.messages if max_messages >= len(self.messages) else self.messages[-max_messages:]
         
         # Convert to LLM format (just role and content)
         return [{"role": m["role"], "content": m["content"]} for m in recent]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -96,6 +97,7 @@ class TelegramChannel(BaseChannel):
     BOT_COMMANDS = [
         BotCommand("start", "Start the bot"),
         BotCommand("reset", "Reset conversation history"),
+        BotCommand("truncate", "Keep only the last N messages, e.g. /truncate 20"),
         BotCommand("help", "Show available commands"),
     ]
     
@@ -134,6 +136,7 @@ class TelegramChannel(BaseChannel):
         # Add command handlers
         self._app.add_handler(CommandHandler("start", self._on_start))
         self._app.add_handler(CommandHandler("reset", self._on_reset))
+        self._app.add_handler(CommandHandler("truncate", self._on_truncate))
         self._app.add_handler(CommandHandler("help", self._on_help))
         
         # Add message handler for text, photos, voice, stickers, documents
@@ -444,15 +447,77 @@ class TelegramChannel(BaseChannel):
         logger.info(f"Session reset for {session_key} (cleared {msg_count} messages)")
         await update.message.reply_text("🔄 Conversation history cleared. Let's start fresh!")
     
+    async def _on_truncate(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /truncate <n> command — keep only the last N messages in context.
+
+        The system prompt is never stored in session messages and is therefore
+        unaffected by truncation.
+
+        Usage: /truncate 20
+        """
+        if not update.message or not update.effective_user:
+            return
+
+        # Parse the argument
+        args = context.args or []
+        if not args:
+            await update.message.reply_text(
+                "⚠️ Usage: <code>/truncate &lt;n&gt;</code>\n"
+                "Example: <code>/truncate 20</code> keeps only the last 20 messages.",
+                parse_mode="HTML",
+            )
+            return
+
+        try:
+            n = int(args[0])
+            if n <= 0:
+                raise ValueError("n must be positive")
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ <code>/truncate</code> requires a positive integer, e.g. <code>/truncate 20</code>.",
+                parse_mode="HTML",
+            )
+            return
+
+        chat_id = str(update.message.chat_id)
+        session_key = f"{self.name}:{chat_id}"
+
+        if self.session_manager is None:
+            logger.warning("/truncate called but session_manager is not available")
+            await update.message.reply_text("⚠️ Session management is not available.")
+            return
+
+        session = self.session_manager.get_or_create(session_key)
+        before = len(session.messages)
+
+        if before <= n:
+            await update.message.reply_text(
+                f"(i) Nothing to truncate — conversation has {before} message(s), requested {n}."
+            )
+            return
+
+        session.messages = session.messages[-n:]
+        session.messages = session.messages[-n:]
+        session.updated_at = datetime.now()
+        self.session_manager.save(session)
+        removed = before - len(session.messages)
+        logger.info(f"Session truncated for {session_key}: {before} → {len(session.messages)} messages ({removed} removed)")
+        await update.message.reply_text(
+            f"✂️ Truncated: kept the last <b>{len(session.messages)}</b> messages "
+            f"(removed {removed}).",
+            parse_mode="HTML",
+        )
+
     async def _on_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command — show available commands."""
         if not update.message:
             return
-        
+
         help_text = (
             "🦊 <b>pocketfox commands</b>\n\n"
             "/start — Start the bot\n"
             "/reset — Reset conversation history\n"
+            "/truncate &lt;n&gt; — Keep only the last N messages in context\n"
             "/help — Show this help message\n\n"
             "Just send me a text message to chat!"
         )
