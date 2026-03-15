@@ -161,7 +161,7 @@ class TTYAgent:
         except EOFError:
             raise KeyboardInterrupt
     
-    async def process(self, content: str, max_iterations: int = 20) -> str:
+    async def process(self, content: str, max_iterations : int = 50) -> str:
         """
         Process a message through the agent.
         

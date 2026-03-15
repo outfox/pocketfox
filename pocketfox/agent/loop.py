@@ -43,7 +43,7 @@ class AgentLoop:
         workspace: Path,
         model: str | None = None,
         max_tokens: int = 100000,
-        max_iterations: int = 20,
+        max_iterations: int = 50,
         brave_api_key: str | None = None,
         exec_config: "ExecToolConfig | None" = None,
         voice_config: "VoiceToolConfig | None" = None,
