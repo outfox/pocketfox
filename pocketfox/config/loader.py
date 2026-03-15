@@ -91,7 +91,6 @@ def _deep_merge(base: dict, overrides: dict) -> dict:
     return result
 
 
-
 def _strip_none(data: Any) -> Any:
     """Recursively strip None values from nested dicts (TOML has no null type)."""
     if isinstance(data, dict):

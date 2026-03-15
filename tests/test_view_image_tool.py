@@ -79,11 +79,11 @@ class TestViewImageToolExecute:
         assert isinstance(result, list)
         assert len(result) == 2
 
-        # Image block
-        assert result[0]["type"] == "image"
-        assert result[0]["source"]["media_type"] == "image/png"
-        assert result[0]["source"]["type"] == "base64"
-        assert len(result[0]["source"]["data"]) > 0
+        # Image block (OpenAI image_url format)
+        assert result[0]["type"] == "image_url"
+        url = result[0]["image_url"]["url"]
+        assert url.startswith("data:image/png;base64,")
+        assert len(url) > len("data:image/png;base64,")
 
         # Text block
         assert result[1]["type"] == "text"
@@ -99,7 +99,7 @@ class TestViewImageToolExecute:
         result = await tool.execute(path=str(img))
 
         assert isinstance(result, list)
-        assert result[0]["source"]["media_type"] == "image/gif"
+        assert "data:image/gif;base64," in result[0]["image_url"]["url"]
 
     @pytest.mark.asyncio
     async def test_view_jpeg(self, tmp_path):
@@ -111,7 +111,7 @@ class TestViewImageToolExecute:
         result = await tool.execute(path=str(img))
 
         assert isinstance(result, list)
-        assert result[0]["source"]["media_type"] == "image/jpeg"
+        assert "data:image/jpeg;base64," in result[0]["image_url"]["url"]
 
     @pytest.mark.asyncio
     async def test_view_webp(self, tmp_path):
@@ -123,7 +123,7 @@ class TestViewImageToolExecute:
         result = await tool.execute(path=str(img))
 
         assert isinstance(result, list)
-        assert result[0]["source"]["media_type"] == "image/webp"
+        assert "data:image/webp;base64," in result[0]["image_url"]["url"]
 
     @pytest.mark.asyncio
     async def test_view_with_question(self, tmp_path):
@@ -272,14 +272,14 @@ class TestViewImageToolContentBlocks:
         result = await tool.execute(path=str(img))
 
         image_block = result[0]
-        assert image_block["type"] == "image"
-        assert "source" in image_block
-        assert image_block["source"]["type"] == "base64"
-        assert image_block["source"]["media_type"] in SUPPORTED_TYPES
-        assert isinstance(image_block["source"]["data"], str)
+        assert image_block["type"] == "image_url"
+        url = image_block["image_url"]["url"]
+        # Verify data URI contains valid base64 for one of the supported types
+        assert any(f"data:{mt};base64," in url for mt in SUPPORTED_TYPES)
 
-        # Verify base64 is valid
-        decoded = base64.b64decode(image_block["source"]["data"])
+        # Extract and verify the base64 payload
+        b64_part = url.split(",", 1)[1]
+        decoded = base64.b64decode(b64_part)
         assert decoded == TINY_PNG
 
     @pytest.mark.asyncio

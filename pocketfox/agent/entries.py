@@ -71,15 +71,16 @@ class ImageEntry(Entry):
         return text
 
     def compile_blocks(self) -> list[dict[str, Any]]:
-        """Return Anthropic multimodal content blocks."""
+        """Return OpenAI-format multimodal content blocks.
+
+        Uses ``image_url`` with a data-URI so litellm can translate to
+        the provider's native format (Anthropic, OpenAI, etc.).
+        """
+        data_uri = f"data:{self._mime_type};base64,{self._base64_data}"
         return [
             {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": self._mime_type,
-                    "data": self._base64_data,
-                },
+                "type": "image_url",
+                "image_url": {"url": data_uri},
             },
             {"type": "text", "text": self.compile()},
         ]

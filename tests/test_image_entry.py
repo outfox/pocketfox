@@ -38,11 +38,11 @@ class TestImageEntryCompileBlocks:
         blocks = entry.compile_blocks()
         assert len(blocks) == 2
 
-        # Image block
-        assert blocks[0]["type"] == "image"
-        assert blocks[0]["source"]["type"] == "base64"
-        assert blocks[0]["source"]["media_type"] == "image/png"
-        assert blocks[0]["source"]["data"] == FAKE_B64
+        # Image block (OpenAI image_url format with data URI)
+        assert blocks[0]["type"] == "image_url"
+        url = blocks[0]["image_url"]["url"]
+        assert url.startswith("data:image/png;base64,")
+        assert url.endswith(FAKE_B64)
 
         # Text block
         assert blocks[1]["type"] == "text"

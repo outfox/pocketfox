@@ -109,15 +109,12 @@ class ViewImageTool(Tool):
             # Read and encode
             image_data = base64.b64encode(file_path.read_bytes()).decode("ascii")
 
-            # Build multimodal content blocks
+            # Build multimodal content blocks (OpenAI format for litellm compat)
+            data_uri = f"data:{mime_type};base64,{image_data}"
             content: list[dict[str, Any]] = [
                 {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": mime_type,
-                        "data": image_data,
-                    },
+                    "type": "image_url",
+                    "image_url": {"url": data_uri},
                 },
             ]
 
@@ -153,6 +150,8 @@ class ViewImageTool(Tool):
         resolved = Path(path).expanduser().resolve()
         if self._allowed_dir:
             allowed = self._allowed_dir.resolve()
-            if not str(resolved).startswith(str(allowed)):
-                raise PermissionError(f"Path {path} is outside allowed directory {self._allowed_dir}")
+            if not resolved.is_relative_to(allowed):
+                raise PermissionError(
+                    f"Path {path} is outside allowed directory {self._allowed_dir}"
+                )
         return resolved

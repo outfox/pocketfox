@@ -2,8 +2,8 @@
 
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 
 def ensure_dir(path: Path) -> Path:
@@ -21,22 +21,20 @@ class PocketfoxPaths:
     Data is per-agent (~/.local/share/pocketfox/<name>/).
     Workspace is user-defined (PF_WORKSPACE or ~/workspace).
     """
+
     agent_name: str
     workspace: Path
 
     @classmethod
     def from_env(cls) -> "PocketfoxPaths":
         name = os.environ.get("PF_AGENT_NAME", "pocketfox")
-        workspace = Path(os.environ.get("PF_WORKSPACE",
-                         Path.home() / "workspace"))
+        workspace = Path(os.environ.get("PF_WORKSPACE", Path.home() / "workspace"))
         return cls(agent_name=name, workspace=workspace.expanduser())
 
     @property
     def data(self) -> Path:
         """Agent-specific data (~/.local/share/pocketfox/<name>/)."""
-        return ensure_dir(
-            Path.home() / ".local" / "share" / "pocketfox" / self.agent_name
-        )
+        return ensure_dir(Path.home() / ".local" / "share" / "pocketfox" / self.agent_name)
 
     @property
     def sessions(self) -> Path:
@@ -60,7 +58,9 @@ class PocketfoxPaths:
     def skills(self) -> Path:
         return ensure_dir(self.workspace / "skills")
 
+
 _paths: PocketfoxPaths | None = None
+
 
 def get_paths() -> PocketfoxPaths:
     """Get the global PocketfoxPaths instance (lazy init from env)."""
@@ -73,13 +73,16 @@ def get_paths() -> PocketfoxPaths:
 def today_date() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
+
 def timestamp() -> str:
     return datetime.now().isoformat()
+
 
 def truncate_string(s: str, max_len: int = 100, suffix: str = "...") -> str:
     if len(s) <= max_len:
         return s
     return s[: max_len - len(suffix)] + suffix
+
 
 def safe_filename(name: str) -> str:
     unsafe = '<>:"/\\|?*'
@@ -87,11 +90,13 @@ def safe_filename(name: str) -> str:
         name = name.replace(char, "_")
     return name.strip()
 
+
 def parse_session_key(key: str) -> tuple[str, str]:
     parts = key.split(":", 1)
     if len(parts) != 2:
         raise ValueError(f"Invalid session key: {key}")
     return parts[0], parts[1]
+
 
 def redact_phone_number(phone: str) -> str:
     if not phone:

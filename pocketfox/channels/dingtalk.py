@@ -5,8 +5,8 @@ import json
 import time
 from typing import Any
 
-from loguru import logger
 import httpx
+from loguru import logger
 
 from pocketfox.bus.events import OutboundMessage
 from pocketfox.bus.queue import MessageBus
@@ -15,11 +15,11 @@ from pocketfox.config.schema import DingTalkConfig
 
 try:
     from dingtalk_stream import (
-        DingTalkStreamClient,
-        Credential,
+        AckMessage,
         CallbackHandler,
         CallbackMessage,
-        AckMessage,
+        Credential,
+        DingTalkStreamClient,
     )
     from dingtalk_stream.chatbot import ChatbotMessage
 
@@ -33,7 +33,7 @@ except ImportError:
     ChatbotMessage = None  # type: ignore[assignment,misc]
 
 
-class pocketfoxDingTalkHandler(CallbackHandler):
+class PocketfoxDingTalkHandler(CallbackHandler):
     """
     Standard DingTalk Stream SDK Callback Handler.
     Parses incoming messages and forwards them to the pocketfox channel.
@@ -69,9 +69,7 @@ class pocketfoxDingTalkHandler(CallbackHandler):
 
             # Forward to pocketfox via _on_message (non-blocking).
             # Store reference to prevent GC before task completes.
-            task = asyncio.create_task(
-                self.channel._on_message(content, sender_id, sender_name)
-            )
+            task = asyncio.create_task(self.channel._on_message(content, sender_id, sender_name))
             self.channel._background_tasks.add(task)
             task.add_done_callback(self.channel._background_tasks.discard)
 
@@ -113,9 +111,7 @@ class DingTalkChannel(BaseChannel):
         """Start the DingTalk bot with Stream Mode."""
         try:
             if not DINGTALK_AVAILABLE:
-                logger.error(
-                    "DingTalk Stream SDK not installed. Run: pip install dingtalk-stream"
-                )
+                logger.error("DingTalk Stream SDK not installed. Run: pip install dingtalk-stream")
                 return
 
             if not self.config.client_id or not self.config.client_secret:
@@ -132,7 +128,7 @@ class DingTalkChannel(BaseChannel):
             self._client = DingTalkStreamClient(credential)
 
             # Register standard handler
-            handler = pocketfoxDingTalkHandler(self)
+            handler = PocketfoxDingTalkHandler(self)
             self._client.register_callback_handler(ChatbotMessage.TOPIC, handler)
 
             logger.info("DingTalk bot started with Stream Mode")
@@ -198,10 +194,12 @@ class DingTalkChannel(BaseChannel):
             "robotCode": self.config.client_id,
             "userIds": [msg.chat_id],  # chat_id is the user's staffId
             "msgKey": "sampleMarkdown",
-            "msgParam": json.dumps({
-                "text": msg.content,
-                "title": "pocketfox Reply",
-            }),
+            "msgParam": json.dumps(
+                {
+                    "text": msg.content,
+                    "title": "pocketfox Reply",
+                }
+            ),
         }
 
         if not self._http:
@@ -218,7 +216,7 @@ class DingTalkChannel(BaseChannel):
             logger.error(f"Error sending DingTalk message: {e}")
 
     async def _on_message(self, content: str, sender_id: str, sender_name: str) -> None:
-        """Handle incoming message (called by pocketfoxDingTalkHandler).
+        """Handle incoming message (called by PocketfoxDingTalkHandler).
 
         Delegates to BaseChannel._handle_message() which enforces allow_from
         permission checks before publishing to the bus.

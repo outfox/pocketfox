@@ -12,12 +12,12 @@ from pocketfox.agent.tools.base import Tool
 
 class ExecTool(Tool):
     """Tool to execute shell commands with optional sandbox isolation.
-    
+
     When sandbox_dir is configured, commands run inside a bubblewrap (bwrap)
     sandbox with only the specified directory visible as /workspace.
     This prevents access to credentials, prompt files, and system configs.
     """
-    
+
     def __init__(
         self,
         timeout: int = 60,
@@ -29,7 +29,7 @@ class ExecTool(Tool):
         sandbox_readonly_paths: list[str] | None = None,
     ):
         """Initialize the exec tool.
-        
+
         Args:
             timeout: Maximum seconds to wait for command completion
             working_dir: Default working directory for commands
@@ -44,25 +44,25 @@ class ExecTool(Tool):
         self.sandbox_dir = sandbox_dir
         self.sandbox_readonly_paths = sandbox_readonly_paths or []
         self.deny_patterns = deny_patterns or [
-            r"\brm\s+-[rf]{1,2}\b",          # rm -r, rm -rf, rm -fr
-            r"\bdel\s+/[fq]\b",              # del /f, del /q
-            r"\brmdir\s+/s\b",               # rmdir /s
-            r"\b(format|mkfs|diskpart)\b",   # disk operations
-            r"\bdd\s+if=",                   # dd
-            r">\s*/dev/sd",                  # write to disk
+            r"\brm\s+-[rf]{1,2}\b",  # rm -r, rm -rf, rm -fr
+            r"\bdel\s+/[fq]\b",  # del /f, del /q
+            r"\brmdir\s+/s\b",  # rmdir /s
+            r"\b(format|mkfs|diskpart)\b",  # disk operations
+            r"\bdd\s+if=",  # dd
+            r">\s*/dev/sd",  # write to disk
             r"\b(shutdown|reboot|poweroff)\b",  # system power
-            r":\(\)\s*\{.*\};\s*:",          # fork bomb
+            r":\(\)\s*\{.*\};\s*:",  # fork bomb
         ]
         self.allow_patterns = allow_patterns or []
         self.restrict_to_workspace = restrict_to_workspace
-        
+
         # Check if bwrap is available when sandbox is requested
         self._bwrap_available: bool | None = None
-    
+
     @property
     def name(self) -> str:
         return "exec"
-    
+
     @property
     def description(self) -> str:
         if self.sandbox_dir:
@@ -72,33 +72,33 @@ class ExecTool(Tool):
                 "System files, credentials, and prompt files are not visible."
             )
         return "Execute a shell command and return its output. Use with caution."
-    
+
     @property
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
             "properties": {
-                "command": {
-                    "type": "string",
-                    "description": "The shell command to execute"
-                },
+                "command": {"type": "string", "description": "The shell command to execute"},
                 "working_dir": {
                     "type": "string",
-                    "description": "Optional working directory (relative to /workspace in sandbox mode)"
-                }
+                    "description": (
+                        "Optional working directory"
+                        " (relative to /workspace in sandbox mode)"
+                    ),
+                },
             },
-            "required": ["command"]
+            "required": ["command"],
         }
-    
+
     def _check_bwrap(self) -> bool:
         """Check if bubblewrap is available."""
         if self._bwrap_available is None:
             self._bwrap_available = shutil.which("bwrap") is not None
         return self._bwrap_available
-    
+
     def _build_bwrap_command(self, command: str, working_dir: str) -> list[str]:
         """Build the bwrap command with appropriate mounts.
-        
+
         The sandbox provides:
         - /workspace: read-write, mapped to sandbox_dir
         - /usr, /bin, /lib, /lib64: read-only system paths
@@ -108,7 +108,7 @@ class ExecTool(Tool):
         - No access to home, /etc, or any other paths
         """
         sandbox_path = Path(self.sandbox_dir).resolve()
-        
+
         # Calculate working directory relative to sandbox
         if working_dir:
             work_path = Path(working_dir).resolve()
@@ -120,73 +120,86 @@ class ExecTool(Tool):
                 sandbox_cwd = "/workspace"
         else:
             sandbox_cwd = "/workspace"
-        
+
         bwrap_args = [
             "bwrap",
             # Isolation
-            "--unshare-all",           # Unshare all namespaces
-            "--share-net",             # But keep network (needed for git, curl, etc.)
-            "--die-with-parent",       # Kill sandbox if parent dies
-            
+            "--unshare-all",  # Unshare all namespaces
+            "--share-net",  # But keep network (needed for git, curl, etc.)
+            "--die-with-parent",  # Kill sandbox if parent dies
             # Essential system paths (read-only)
-            "--ro-bind", "/usr", "/usr",
-            "--ro-bind", "/bin", "/bin",
-            "--ro-bind", "/etc/resolv.conf", "/etc/resolv.conf",  # DNS
-            "--ro-bind", "/etc/ssl", "/etc/ssl",  # SSL certs
-            "--ro-bind", "/etc/ca-certificates", "/etc/ca-certificates",
-            
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/bin",
+            "/bin",
+            "--ro-bind",
+            "/etc/resolv.conf",
+            "/etc/resolv.conf",  # DNS
+            "--ro-bind",
+            "/etc/ssl",
+            "/etc/ssl",  # SSL certs
+            "--ro-bind",
+            "/etc/ca-certificates",
+            "/etc/ca-certificates",
             # Symlinks for lib paths (needed on most distros)
-            "--symlink", "usr/lib", "/lib",
-            "--symlink", "usr/lib64", "/lib64",
-            
+            "--symlink",
+            "usr/lib",
+            "/lib",
+            "--symlink",
+            "usr/lib64",
+            "/lib64",
             # Isolated /tmp
-            "--tmpfs", "/tmp",
-            
+            "--tmpfs",
+            "/tmp",
             # Essential devices
-            "--dev", "/dev",
-            
+            "--dev",
+            "/dev",
             # The workspace - read-write
-            "--bind", str(sandbox_path), "/workspace",
-            
+            "--bind",
+            str(sandbox_path),
+            "/workspace",
             # Working directory
-            "--chdir", sandbox_cwd,
+            "--chdir",
+            sandbox_cwd,
         ]
-        
+
         # Add any additional read-only paths
         for ro_path in self.sandbox_readonly_paths:
             if Path(ro_path).exists():
                 # Mount at the same path inside sandbox
                 bwrap_args.extend(["--ro-bind", ro_path, ro_path])
-        
+
         # Add the actual command
         bwrap_args.extend(["sh", "-c", command])
-        
+
         return bwrap_args
-    
+
     async def execute(self, command: str, working_dir: str | None = None, **kwargs: Any) -> str:
         # Determine working directory
         cwd = working_dir or self.working_dir or os.getcwd()
-        
+
         # Apply safety guards
         guard_error = self._guard_command(command, cwd)
         if guard_error:
             return guard_error
-        
+
         # Decide execution mode
         use_sandbox = self.sandbox_dir is not None
-        
+
         if use_sandbox:
             if not self._check_bwrap():
                 return (
                     "Error: Sandbox mode requested but 'bwrap' (bubblewrap) is not installed. "
                     "Install with: apt-get install bubblewrap"
                 )
-            
+
             # Verify sandbox directory exists
             sandbox_path = Path(self.sandbox_dir).resolve()
             if not sandbox_path.exists():
                 return f"Error: Sandbox directory does not exist: {self.sandbox_dir}"
-            
+
             bwrap_cmd = self._build_bwrap_command(command, cwd)
             actual_command = bwrap_cmd
             shell_mode = False
@@ -195,7 +208,7 @@ class ExecTool(Tool):
             actual_command = command
             shell_mode = True
             exec_cwd = cwd
-        
+
         try:
             if shell_mode:
                 process = await asyncio.create_subprocess_shell(
@@ -210,38 +223,35 @@ class ExecTool(Tool):
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-            
+
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=self.timeout
-                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=self.timeout)
             except asyncio.TimeoutError:
                 process.kill()
                 return f"Error: Command timed out after {self.timeout} seconds"
-            
+
             output_parts = []
-            
+
             if stdout:
                 output_parts.append(stdout.decode("utf-8", errors="replace"))
-            
+
             if stderr:
                 stderr_text = stderr.decode("utf-8", errors="replace")
                 if stderr_text.strip():
                     output_parts.append(f"STDERR:\n{stderr_text}")
-            
+
             if process.returncode != 0:
                 output_parts.append(f"\nExit code: {process.returncode}")
-            
+
             result = "\n".join(output_parts) if output_parts else "(no output)"
-            
+
             # Truncate very long output
             max_len = 10000
             if len(result) > max_len:
                 result = result[:max_len] + f"\n... (truncated, {len(result) - max_len} more chars)"
-            
+
             return result
-            
+
         except Exception as e:
             return f"Error executing command: {str(e)}"
 

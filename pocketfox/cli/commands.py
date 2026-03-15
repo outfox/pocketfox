@@ -3,16 +3,16 @@
 import asyncio
 import atexit
 import os
-import signal
-from pathlib import Path
 import select
+import signal
 import sys
+from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
-from pocketfox import __version__, __logo__
+from pocketfox import __logo__, __version__
 
 app = typer.Typer(
     name="pocketfox",
@@ -44,6 +44,7 @@ def _flush_pending_tty_input() -> None:
 
     try:
         import termios
+
         termios.tcflush(fd, termios.TCIFLUSH)
         return
     except Exception:
@@ -75,6 +76,7 @@ def _restore_terminal() -> None:
         return
     try:
         import termios
+
         termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _SAVED_TERM_ATTRS)
     except Exception:
         pass
@@ -87,11 +89,13 @@ def _enable_line_editing() -> None:
     # Save terminal state before readline touches it
     try:
         import termios
+
         _SAVED_TERM_ATTRS = termios.tcgetattr(sys.stdin.fileno())
     except Exception:
         pass
 
     from pocketfox.utils.helpers import get_paths
+
     history_file = get_paths().data / "history" / "cli_history"
     history_file.parent.mkdir(parents=True, exist_ok=True)
     _HISTORY_FILE = history_file
@@ -149,9 +153,7 @@ def version_callback(value: bool):
 
 @app.callback()
 def main(
-    version: bool = typer.Option(
-        None, "--version", "-v", callback=version_callback, is_eager=True
-    ),
+    version: bool = typer.Option(None, "--version", "-v", callback=version_callback, is_eager=True),
 ):
     """pocketfox - Personal AI Assistant."""
     pass
@@ -194,10 +196,10 @@ def onboard():
     console.print("\nNext steps:")
     console.print(f"  1. Add your API key to [cyan]~/.config/pocketfox-{name}/config.toml[/cyan]")
     console.print("     Get one at: https://openrouter.ai/keys")
-    console.print("  2. Chat: [cyan]pocketfox agent -m \"Hello!\"[/cyan]")
-    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/outfox/pocketfox#-chat-apps[/dim]")
-
-
+    console.print('  2. Chat: [cyan]pocketfox agent -m "Hello!"[/cyan]')
+    console.print(
+        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/outfox/pocketfox#-chat-apps[/dim]"
+    )
 
 
 def _create_workspace_templates(workspace: Path):
@@ -266,13 +268,13 @@ cat /run/secrets/my_passphrase | some-command --password-stdin
 ```
 """,
     }
-    
+
     for filename, content in templates.items():
         file_path = workspace / filename
         if not file_path.exists():
             file_path.write_text(content)
             console.print(f"  [dim]Created {filename}[/dim]")
-    
+
     # Create memory directory and MEMORY.md
     memory_dir = workspace / "memory"
     memory_dir.mkdir(exist_ok=True)
@@ -300,11 +302,12 @@ This file stores important information that should persist across sessions.
 def _make_provider(config):
     """Create LiteLLMProvider from config. Exits if no API key found."""
     from pocketfox.providers.litellm_provider import LiteLLMProvider
+
     p = config.get_provider()
     model = config.agents.defaults.model
     if not (p and p.api_key) and not model.startswith("bedrock/"):
         console.print("[red]Error: No API key configured.[/red]")
-        console.print(f"Set one in .config/pocketfox/config.toml under providers section")
+        console.print("Set one in .config/pocketfox/config.toml under providers section")
         raise typer.Exit(1)
     return LiteLLMProvider(
         api_key=p.api_key if p else None,
@@ -326,15 +329,15 @@ def gateway(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
 ):
     """Start the pocketfox gateway."""
-    from pocketfox.config.loader import load_config
-    from pocketfox.bus.queue import MessageBus
     from pocketfox.agent.loop import AgentLoop
+    from pocketfox.bus.queue import MessageBus
     from pocketfox.channels.manager import ChannelManager
-    from pocketfox.session.manager import SessionManager
+    from pocketfox.config.loader import load_config
     from pocketfox.cron.service import CronService
     from pocketfox.cron.types import CronJob
     from pocketfox.heartbeat.service import HeartbeatService
     from pocketfox.log import configure_logging
+    from pocketfox.session.manager import SessionManager
     from pocketfox.utils.helpers import get_paths
 
     configure_logging(verbose=verbose)
@@ -349,7 +352,7 @@ def gateway(
     # Create cron service first (callback set after agent creation)
     cron_store_path = get_paths().data / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
-    
+
     # Create agent with cron service
     agent = AgentLoop(
         bus=bus,
@@ -365,7 +368,7 @@ def gateway(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
     )
-    
+
     # Set cron callback (needs agent)
     async def on_cron_job(job: CronJob) -> str | None:
         """Execute a cron job through the agent."""
@@ -377,48 +380,52 @@ def gateway(
         )
         if job.payload.deliver and job.payload.to:
             from pocketfox.bus.events import OutboundMessage
-            await bus.publish_outbound(OutboundMessage(
-                channel=job.payload.channel or "cli",
-                chat_id=job.payload.to,
-                content=response or ""
-            ))
+
+            await bus.publish_outbound(
+                OutboundMessage(
+                    channel=job.payload.channel or "cli",
+                    chat_id=job.payload.to,
+                    content=response or "",
+                )
+            )
         return response
+
     cron.on_job = on_cron_job
-    
+
     # Create heartbeat service
     async def on_heartbeat(prompt: str) -> str:
         """Execute heartbeat through the agent."""
         return await agent.process_direct(prompt, session_key="heartbeat")
-    
+
     heartbeat = HeartbeatService(
         workspace=config.workspace_path,
         on_heartbeat=on_heartbeat,
         interval_s=30 * 60,  # 30 minutes
-        enabled=True
+        enabled=True,
     )
-    
+
     # Create channel manager
     channels = ChannelManager(config, bus, session_manager=session_manager)
-    
+
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
     else:
         console.print("[yellow]Warning: No channels enabled[/yellow]")
-    
+
     cron_status = cron.status()
     if cron_status["jobs"] > 0:
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
-    
-    console.print(f"[green]✓[/green] Heartbeat: every 30m")
-    
+
+    console.print("[green]✓[/green] Heartbeat: every 30m")
+
     async def run():
         loop = asyncio.get_running_loop()
         shutdown_event = asyncio.Event()
-        
+
         def _signal_handler():
             console.print("\nShutting down...")
             shutdown_event.set()
-        
+
         # Handle both SIGTERM (Docker) and SIGINT (Ctrl+C)
         # Windows does not support add_signal_handler (NotImplementedError)
         for sig in (signal.SIGTERM, signal.SIGINT):
@@ -426,23 +433,23 @@ def gateway(
                 loop.add_signal_handler(sig, _signal_handler)
             except NotImplementedError:
                 pass  # Windows — signal handling not supported in asyncio
-        
+
         try:
             await cron.start()
             await heartbeat.start()
-            
+
             # Run until shutdown signal
             main_task = asyncio.gather(
                 agent.run(),
                 channels.start_all(),
             )
             shutdown_task = asyncio.create_task(shutdown_event.wait())
-            
+
             done, pending = await asyncio.wait(
                 [main_task, shutdown_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )
-            
+
             # Surface exceptions from completed tasks before cancelling pending
             for task in done:
                 try:
@@ -451,8 +458,9 @@ def gateway(
                     pass
                 except Exception:
                     from loguru import logger
+
                     logger.exception("Task failed with exception")
-            
+
             # Cancel pending tasks
             for task in pending:
                 task.cancel()
@@ -466,10 +474,8 @@ def gateway(
             cron.stop()
             agent.stop()
             await channels.stop_all()
-    
+
     asyncio.run(run())
-
-
 
 
 # ============================================================================
@@ -483,15 +489,15 @@ def agent(
     session_id: str = typer.Option("cli:default", "--session", "-s", help="Session ID"),
 ):
     """Interact with the agent directly."""
-    from pocketfox.config.loader import load_config
-    from pocketfox.bus.queue import MessageBus
     from pocketfox.agent.loop import AgentLoop
-    
+    from pocketfox.bus.queue import MessageBus
+    from pocketfox.config.loader import load_config
+
     config = load_config()
-    
+
     bus = MessageBus()
     provider = _make_provider(config)
-    
+
     agent_loop = AgentLoop(
         bus=bus,
         provider=provider,
@@ -501,13 +507,13 @@ def agent(
         voice_config=config.tools.voice,
         restrict_to_workspace=config.tools.restrict_to_workspace,
     )
-    
+
     if message:
         # Single message mode
         async def run_once():
             response = await agent_loop.process_direct(message, session_id)
             console.print(f"\n{__logo__} {response}")
-        
+
         asyncio.run(run_once())
     else:
         # Interactive mode
@@ -523,7 +529,7 @@ def agent(
             os._exit(0)
 
         signal.signal(signal.SIGINT, _exit_on_sigint)
-        
+
         async def run_interactive():
             while True:
                 try:
@@ -531,7 +537,7 @@ def agent(
                     user_input = await _read_interactive_input_async()
                     if not user_input.strip():
                         continue
-                    
+
                     response = await agent_loop.process_direct(user_input, session_id)
                     console.print(f"\n{__logo__} {response}\n")
                 except KeyboardInterrupt:
@@ -539,7 +545,7 @@ def agent(
                     _restore_terminal()
                     console.print("\nGoodbye!")
                     break
-        
+
         asyncio.run(run_interactive())
 
 
@@ -566,27 +572,15 @@ def channels_status():
 
     # WhatsApp
     wa = config.channels.whatsapp
-    table.add_row(
-        "WhatsApp",
-        "✓" if wa.enabled else "✗",
-        wa.bridge_url
-    )
+    table.add_row("WhatsApp", "✓" if wa.enabled else "✗", wa.bridge_url)
 
     dc = config.channels.discord
-    table.add_row(
-        "Discord",
-        "✓" if dc.enabled else "✗",
-        dc.gateway_url
-    )
-    
+    table.add_row("Discord", "✓" if dc.enabled else "✗", dc.gateway_url)
+
     # Telegram
     tg = config.channels.telegram
     tg_config = f"token: {tg.token[:10]}..." if tg.token else "[dim]not configured[/dim]"
-    table.add_row(
-        "Telegram",
-        "✓" if tg.enabled else "✗",
-        tg_config
-    )
+    table.add_row("Telegram", "✓" if tg.enabled else "✗", tg_config)
 
     console.print(table)
 
@@ -595,57 +589,57 @@ def _get_bridge_dir() -> Path:
     """Get the bridge directory, setting it up if needed."""
     import shutil
     import subprocess
-    
+
     # User's bridge location
     user_bridge = Path.home() / "bridge"
-    
+
     # Check if already built
     if (user_bridge / "dist" / "index.js").exists():
         return user_bridge
-    
+
     # Check for npm
     if not shutil.which("npm"):
         console.print("[red]npm not found. Please install Node.js >= 18.[/red]")
         raise typer.Exit(1)
-    
+
     # Find source bridge: first check package data, then source dir
     pkg_bridge = Path(__file__).parent.parent / "bridge"  # pocketfox/bridge (installed)
     src_bridge = Path(__file__).parent.parent.parent / "bridge"  # repo root/bridge (dev)
-    
+
     source = None
     if (pkg_bridge / "package.json").exists():
         source = pkg_bridge
     elif (src_bridge / "package.json").exists():
         source = src_bridge
-    
+
     if not source:
         console.print("[red]Bridge source not found.[/red]")
         console.print("Try reinstalling: pip install --force-reinstall pocketfox")
         raise typer.Exit(1)
-    
+
     console.print(f"{__logo__} Setting up bridge...")
-    
+
     # Copy to user directory
     user_bridge.parent.mkdir(parents=True, exist_ok=True)
     if user_bridge.exists():
         shutil.rmtree(user_bridge)
     shutil.copytree(source, user_bridge, ignore=shutil.ignore_patterns("node_modules", "dist"))
-    
+
     # Install and build
     try:
         console.print("  Installing dependencies...")
         subprocess.run(["npm", "install"], cwd=user_bridge, check=True, capture_output=True)
-        
+
         console.print("  Building...")
         subprocess.run(["npm", "run", "build"], cwd=user_bridge, check=True, capture_output=True)
-        
+
         console.print("[green]✓[/green] Bridge ready\n")
     except subprocess.CalledProcessError as e:
         console.print(f"[red]Build failed: {e}[/red]")
         if e.stderr:
             console.print(f"[dim]{e.stderr.decode()[:500]}[/dim]")
         raise typer.Exit(1)
-    
+
     return user_bridge
 
 
@@ -653,12 +647,12 @@ def _get_bridge_dir() -> Path:
 def channels_login():
     """Link device via QR code."""
     import subprocess
-    
+
     bridge_dir = _get_bridge_dir()
-    
+
     console.print(f"{__logo__} Starting bridge...")
     console.print("Scan the QR code to connect.\n")
-    
+
     try:
         subprocess.run(["npm", "start"], cwd=bridge_dir, check=True)
     except subprocess.CalledProcessError as e:
@@ -687,19 +681,20 @@ def cron_list(
     service = CronService(store_path)
 
     jobs = service.list_jobs(include_disabled=all)
-    
+
     if not jobs:
         console.print("No scheduled jobs.")
         return
-    
+
     table = Table(title="Scheduled Jobs")
     table.add_column("ID", style="cyan")
     table.add_column("Name")
     table.add_column("Schedule")
     table.add_column("Status")
     table.add_column("Next Run")
-    
+
     import time
+
     for job in jobs:
         # Format schedule
         if job.schedule.kind == "every":
@@ -708,17 +703,19 @@ def cron_list(
             sched = job.schedule.expr or ""
         else:
             sched = "one-time"
-        
+
         # Format next run
         next_run = ""
         if job.state.next_run_at_ms:
-            next_time = time.strftime("%Y-%m-%d %H:%M", time.localtime(job.state.next_run_at_ms / 1000))
+            next_time = time.strftime(
+                "%Y-%m-%d %H:%M", time.localtime(job.state.next_run_at_ms / 1000)
+            )
             next_run = next_time
-        
+
         status = "[green]enabled[/green]" if job.enabled else "[dim]disabled[/dim]"
-        
+
         table.add_row(job.id, job.name, sched, status, next_run)
-    
+
     console.print(table)
 
 
@@ -731,7 +728,9 @@ def cron_add(
     at: str = typer.Option(None, "--at", help="Run once at time (ISO format)"),
     deliver: bool = typer.Option(False, "--deliver", "-d", help="Deliver response to channel"),
     to: str = typer.Option(None, "--to", help="Recipient for delivery"),
-    channel: str = typer.Option(None, "--channel", help="Channel for delivery (e.g. 'telegram', 'whatsapp')"),
+    channel: str = typer.Option(
+        None, "--channel", help="Channel for delivery (e.g. 'telegram', 'whatsapp')"
+    ),
 ):
     """Add a scheduled job."""
     from pocketfox.cron.service import CronService
@@ -745,12 +744,13 @@ def cron_add(
         schedule = CronSchedule(kind="cron", expr=cron_expr)
     elif at:
         import datetime
+
         dt = datetime.datetime.fromisoformat(at)
         schedule = CronSchedule(kind="at", at_ms=int(dt.timestamp() * 1000))
     else:
         console.print("[red]Error: Must specify --every, --cron, or --at[/red]")
         raise typer.Exit(1)
-    
+
     store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
 
@@ -762,7 +762,7 @@ def cron_add(
         to=to,
         channel=channel,
     )
-    
+
     console.print(f"[green]✓[/green] Added job '{job.name}' ({job.id})")
 
 
@@ -814,12 +814,12 @@ def cron_run(
 
     store_path = get_paths().data / "cron" / "jobs.json"
     service = CronService(store_path)
-    
+
     async def run():
         return await service.run_job(job_id, force=force)
-    
+
     if asyncio.run(run()):
-        console.print(f"[green]✓[/green] Job executed")
+        console.print("[green]✓[/green] Job executed")
     else:
         console.print(f"[red]Failed to run job {job_id}[/red]")
 
@@ -841,7 +841,7 @@ def repl(
 ):
     """Start a Python REPL with pocketfox internals pre-loaded."""
     from pocketfox.cli.repl import start_repl
-    
+
     ws_path = Path(workspace) if workspace else None
     start_repl(use_ipython=ipython, workspace=ws_path)
 
@@ -855,21 +855,21 @@ def tty(
     workspace: str = typer.Option(None, "--workspace", "-w", help="Override workspace path"),
 ):
     """Interactive TTY for development and debugging.
-    
+
     Features:
     - Verbose mode shows tool calls and results
     - Dry-run mode simulates without executing
     - Breakpoints pause before each tool call
-    
+
     Commands in TTY:
     - /reset     Clear conversation history
     - /verbose   Toggle verbose mode
-    - /dry-run   Toggle dry-run mode  
+    - /dry-run   Toggle dry-run mode
     - /breakpoints  Toggle breakpoints
     - /quit      Exit
     """
     from pocketfox.cli.tty import start_tty
-    
+
     ws_path = Path(workspace) if workspace else None
     start_tty(
         workspace=ws_path,
@@ -888,7 +888,7 @@ def tty(
 @app.command()
 def status():
     """Show pocketfox status."""
-    from pocketfox.config.loader import load_config, get_config_path
+    from pocketfox.config.loader import get_config_path, load_config
 
     config_path = get_config_path()
     config = load_config()
@@ -896,14 +896,18 @@ def status():
 
     console.print(f"{__logo__} pocketfox Status\n")
 
-    console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
-    console.print(f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
+    console.print(
+        f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}"
+    )
+    console.print(
+        f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}"
+    )
 
     if config_path.exists():
         from pocketfox.providers.registry import PROVIDERS
 
         console.print(f"Model: {config.agents.defaults.model}")
-        
+
         # Check API keys from registry
         for spec in PROVIDERS:
             p = getattr(config.providers, spec.name, None)
@@ -917,7 +921,9 @@ def status():
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
                 has_key = bool(p.api_key)
-                console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+                console.print(
+                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
+                )
 
 
 if __name__ == "__main__":

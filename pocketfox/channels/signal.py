@@ -119,7 +119,7 @@ class SignalChannel(BaseChannel):
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through Signal.
-        
+
         Raises:
             SendError: If the message could not be delivered.
         """
@@ -135,7 +135,7 @@ class SignalChannel(BaseChannel):
         payload: dict[str, Any] = {
             "message": msg.content,
             "number": self.config.phone_number,
-            "recipients": [recipient]
+            "recipients": [recipient],
         }
 
         # Handle media attachments
@@ -156,7 +156,7 @@ class SignalChannel(BaseChannel):
 
         url = f"{self._base_url}/v2/send"
         send_timeout = aiohttp.ClientTimeout(total=30)
-        
+
         try:
             async with self._session.post(url, json=payload, timeout=send_timeout) as resp:
                 if resp.status not in (200, 201):
@@ -242,9 +242,7 @@ class SignalChannel(BaseChannel):
 
             if att_id:
                 # Download the attachment
-                downloaded_path = await self._download_attachment(
-                    att_id, content_type, filename
-                )
+                downloaded_path = await self._download_attachment(att_id, content_type, filename)
                 if downloaded_path:
                     media_paths.append(downloaded_path)
 
@@ -272,7 +270,11 @@ class SignalChannel(BaseChannel):
             if reaction:
                 emoji = reaction.get("emoji", "")
                 target_author = reaction.get("targetAuthor", "")
-                logger.debug(f"Signal reaction: {emoji} from {redact_phone_number(source)} on message from {redact_phone_number(target_author)}")
+                logger.debug(
+                    f"Signal reaction: {emoji} from"
+                    f" {redact_phone_number(source)} on message"
+                    f" from {redact_phone_number(target_author)}"
+                )
                 return
 
             # Check for sticker
@@ -295,7 +297,7 @@ class SignalChannel(BaseChannel):
                 "source_name": source_name,
                 "is_group": is_group,
                 "group_id": group_info.get("groupId") if is_group else None,
-            }
+            },
         )
 
     async def _handle_reset_command(self, sender: str, sender_name: str) -> None:
@@ -310,11 +312,13 @@ class SignalChannel(BaseChannel):
 
         if self.session_manager is None:
             logger.warning("/reset called but session_manager is not available")
-            await self.send(OutboundMessage(
-                channel=self.name,
-                chat_id=chat_id,
-                content="⚠️ Session management is not available."
-            ))
+            await self.send(
+                OutboundMessage(
+                    channel=self.name,
+                    chat_id=chat_id,
+                    content="⚠️ Session management is not available.",
+                )
+            )
             return
 
         session = self.session_manager.get_or_create(session_key)
@@ -322,14 +326,15 @@ class SignalChannel(BaseChannel):
         session.clear()
         self.session_manager.save(session)
 
-        display_name = sender_name or sender
         redacted_key = f"{self.name}:{redact_phone_number(chat_id)}"
         logger.info(f"Session reset for {redacted_key} (cleared {msg_count} messages)")
-        await self.send(OutboundMessage(
-            channel=self.name,
-            chat_id=chat_id,
-            content="🔄 Conversation history cleared. Let's start fresh!"
-        ))
+        await self.send(
+            OutboundMessage(
+                channel=self.name,
+                chat_id=chat_id,
+                content="🔄 Conversation history cleared. Let's start fresh!",
+            )
+        )
 
     async def _download_attachment(
         self, att_id: str, content_type: str, filename: str
@@ -368,9 +373,7 @@ class SignalChannel(BaseChannel):
                     return str(file_path)
                 else:
                     text = await resp.text()
-                    logger.error(
-                        f"Failed to download attachment {att_id}: {resp.status} - {text}"
-                    )
+                    logger.error(f"Failed to download attachment {att_id}: {resp.status} - {text}")
                     return None
         except Exception as e:
             logger.error(f"Error downloading Signal attachment: {e}")
