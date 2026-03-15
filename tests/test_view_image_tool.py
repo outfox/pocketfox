@@ -300,14 +300,15 @@ class TestViewImageToolKeep:
     """Tests for the keep parameter."""
 
     def _make_mock_context_builder(self):
-        """Create a mock ContextBuilder with a topic section."""
+        """Create a mock ContextBuilder that captures add_entry calls."""
         builder = MagicMock()
-        builder.context.topic.entries = []
+        builder._added_entries = []
 
-        def add_entry(entry):
-            builder.context.topic.entries.append(entry)
+        def add_entry(section, content, name=None):
+            builder._added_entries.append((section, content))
+            return f"entry_{len(builder._added_entries)}"
 
-        builder.context.topic.add = add_entry
+        builder.add_entry = add_entry
         return builder
 
     @pytest.mark.asyncio
@@ -320,11 +321,11 @@ class TestViewImageToolKeep:
         tool = ViewImageTool(allowed_dir=tmp_path, context_builder=builder)
         await tool.execute(path=str(img), keep=False)
 
-        assert len(builder.context.topic.entries) == 0
+        assert len(builder._added_entries) == 0
 
     @pytest.mark.asyncio
     async def test_keep_true_adds_image_entry(self, tmp_path):
-        """keep=True should add an ImageEntry to context.topic."""
+        """keep=True should add an ImageEntry via add_entry."""
         img = tmp_path / "test.png"
         img.write_bytes(TINY_PNG)
 
@@ -332,10 +333,10 @@ class TestViewImageToolKeep:
         tool = ViewImageTool(allowed_dir=tmp_path, context_builder=builder)
         result = await tool.execute(path=str(img), keep=True)
 
-        assert len(builder.context.topic.entries) == 1
-        entry = builder.context.topic.entries[0]
+        assert len(builder._added_entries) == 1
+        section, entry = builder._added_entries[0]
+        assert section == "topic"
         assert isinstance(entry, ImageEntry)
-        assert hasattr(entry, "_runtime_id")
 
         # Caption should mention "keeping in context"
         text_block = result[1]
@@ -364,5 +365,5 @@ class TestViewImageToolKeep:
         tool = ViewImageTool(allowed_dir=tmp_path, context_builder=builder)
         await tool.execute(path=str(img), question="What is this?", keep=True)
 
-        entry = builder.context.topic.entries[0]
+        _, entry = builder._added_entries[0]
         assert entry._caption == "What is this?"

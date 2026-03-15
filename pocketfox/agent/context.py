@@ -6,7 +6,7 @@ import platform
 from pathlib import Path
 from typing import Any, ClassVar
 
-from loom import Context, FileEntry, StringEntry
+from loom import Context, Entry, FileEntry, StringEntry
 
 from pocketfox.agent.entries import DateTimeEntry, ImageEntry
 from pocketfox.agent.memory import MemoryStore
@@ -142,20 +142,20 @@ Skills with available="false" need dependencies installed first - you can try in
     def add_entry(
         self,
         section: str,
-        content: str,
+        content: str | Entry,
         name: str | None = None,
     ) -> str:
         """
         Add an entry to a section of the persistent context.
-        
+
         Args:
             section: Section name (foundation, focus, topic, step, attention).
-            content: The text content to add.
-            name: Optional name for the entry.
-        
+            content: Text content (creates StringEntry) or a pre-built Entry.
+            name: Optional name for the entry (ignored if content is an Entry).
+
         Returns:
             The entry ID (for later removal).
-        
+
         Raises:
             ValueError: If section name is invalid.
         """
@@ -163,15 +163,18 @@ Skills with available="false" need dependencies installed first - you can try in
         section_obj = getattr(ctx, section, None)
         if section_obj is None:
             raise ValueError(f"Invalid section: {section}. Valid: foundation, focus, topic, step, attention")
-        
+
         self._entry_counter += 1
         entry_id = f"entry_{self._entry_counter}"
-        entry_name = name or entry_id
-        
-        entry = StringEntry(content, name=entry_name)
+
+        if isinstance(content, Entry):
+            entry = content
+        else:
+            entry_name = name or entry_id
+            entry = StringEntry(content, name=entry_name)
         entry._runtime_id = entry_id  # Tag for later removal
         section_obj.add(entry)
-        
+
         return entry_id
     
     def remove_entry(self, entry_id: str) -> bool:

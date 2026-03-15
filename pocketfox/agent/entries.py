@@ -58,6 +58,7 @@ class ImageEntry(Entry):
         """
         super().__init__(name or f"Image: {path.name}")
         self._path = path
+        self._resolved = str(path.resolve())
         self._base64_data = base64_data
         self._mime_type = mime_type
         self._caption = caption
@@ -71,7 +72,7 @@ class ImageEntry(Entry):
 
     def compile_blocks(self) -> list[dict[str, Any]]:
         """Return Anthropic multimodal content blocks."""
-        blocks: list[dict[str, Any]] = [
+        return [
             {
                 "type": "image",
                 "source": {
@@ -80,16 +81,12 @@ class ImageEntry(Entry):
                     "data": self._base64_data,
                 },
             },
+            {"type": "text", "text": self.compile()},
         ]
-        caption = f"[Kept image: {self._path.name}]"
-        if self._caption:
-            caption += f" ({self._caption})"
-        blocks.append({"type": "text", "text": caption})
-        return blocks
 
     def identity(self) -> str:
         """Resolved path for deduplication."""
-        return f"image:{self._path.resolve()}"
+        return f"image:{self._resolved}"
 
     def __repr__(self) -> str:
         return f"ImageEntry(path={self._path!r})"

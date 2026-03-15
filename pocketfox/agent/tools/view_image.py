@@ -136,8 +136,7 @@ class ViewImageTool(Tool):
                     mime_type=mime_type,
                     caption=question,
                 )
-                entry._runtime_id = f"kept_image:{file_path.resolve()}"
-                self._context_builder.context.topic.add(entry)
+                self._context_builder.add_entry("topic", entry)
                 caption += "\n(keeping in context)"
 
             content.append({"type": "text", "text": caption})
