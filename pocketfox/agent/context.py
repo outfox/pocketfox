@@ -348,9 +348,6 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             clear_volatile=False,  # We'll handle step/attention separately
         )
 
-        # Inject kept image blocks into the system message
-        self._inject_image_blocks(messages, ctx)
-
         # Add history with cache breakpoint on the LAST message
         # This allows Anthropic to cache the entire conversation prefix
         if history:
@@ -402,6 +399,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             else:
                 last_msg["content"].append({"type": "text", "text": f"\n\n{step_content}"})
         
+        # Inject kept image blocks into the current user message
+        # (must be in a user message — system messages only support text blocks)
+        self._inject_image_blocks(messages, ctx)
+
         # Clear volatile sections now that we've used them
         ctx.step.clear()
 
@@ -422,17 +423,17 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         return ""
 
     def _inject_image_blocks(self, messages: list[dict[str, Any]], ctx: Context) -> None:
-        """Inject kept ImageEntry blocks into the system message."""
+        """Inject kept ImageEntry blocks into the current user message."""
         image_entries = [e for e in ctx.topic.entries if isinstance(e, ImageEntry)]
         if not image_entries:
             return
 
-        # Find the system message
-        if not messages or messages[0].get("role") != "system":
+        # Find the last user message
+        user_msg = messages[-1] if messages and messages[-1].get("role") == "user" else None
+        if not user_msg:
             return
 
-        sys_msg = messages[0]
-        content = sys_msg.get("content", "")
+        content = user_msg["content"]
 
         # Normalize to list of content blocks
         if isinstance(content, str):
@@ -440,17 +441,13 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         else:
             blocks = list(content)
 
-        # Append image blocks from each ImageEntry
+        # Prepend image blocks so the model sees them before the user's text
+        image_blocks: list[dict[str, Any]] = []
         for entry in image_entries:
-            blocks.extend(entry.compile_blocks())
+            image_blocks.extend(entry.compile_blocks())
+        blocks = image_blocks + blocks
 
-        # Move cache_control to the last block
-        for block in blocks:
-            block.pop("cache_control", None)
-        if blocks:
-            blocks[-1]["cache_control"] = {"type": "ephemeral"}
-
-        sys_msg["content"] = blocks
+        user_msg["content"] = blocks
 
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
         """Build user message content with optional base64-encoded images."""
