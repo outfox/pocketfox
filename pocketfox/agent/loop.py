@@ -100,7 +100,10 @@ class AgentLoop:
         ))
         
         # Vision tool (view images from filesystem)
-        self.tools.register(ViewImageTool(allowed_dir=allowed_dir))
+        self.tools.register(ViewImageTool(
+            allowed_dir=allowed_dir,
+            context_builder=self.context,
+        ))
         
         # Web tools
         self.tools.register(WebSearchTool(api_key=self.brave_api_key))

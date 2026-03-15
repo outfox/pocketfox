@@ -1,11 +1,16 @@
 """View image tool: load images from the filesystem into the LLM context."""
 
+from __future__ import annotations
+
 import base64
 import mimetypes
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pocketfox.agent.tools.base import Tool
+
+if TYPE_CHECKING:
+    from pocketfox.agent.context import ContextBuilder
 
 # Maximum file size: 20 MB (Anthropic's limit for base64 images)
 MAX_IMAGE_SIZE = 20 * 1024 * 1024
@@ -22,8 +27,13 @@ class ViewImageTool(Tool):
     tool result that Claude can see directly — no external API needed.
     """
 
-    def __init__(self, allowed_dir: Path | None = None):
+    def __init__(
+        self,
+        allowed_dir: Path | None = None,
+        context_builder: ContextBuilder | None = None,
+    ):
         self._allowed_dir = allowed_dir
+        self._context_builder = context_builder
 
     @property
     def name(self) -> str:
@@ -50,11 +60,24 @@ class ViewImageTool(Tool):
                     "type": "string",
                     "description": "Optional question or focus for viewing the image",
                 },
+                "keep": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, persist the image in the system context so it remains "
+                        "visible across subsequent turns. Default: false."
+                    ),
+                },
             },
             "required": ["path"],
         }
 
-    async def execute(self, path: str, question: str | None = None, **kwargs: Any) -> str | list[dict[str, Any]]:
+    async def execute(
+        self,
+        path: str,
+        question: str | None = None,
+        keep: bool = False,
+        **kwargs: Any,
+    ) -> str | list[dict[str, Any]]:
         """
         Read an image and return it as a multimodal content block.
 
@@ -102,6 +125,21 @@ class ViewImageTool(Tool):
             caption = f"Image: {file_path.name}"
             if question:
                 caption += f"\nQuestion: {question}"
+
+            # Persist image in context if requested
+            if keep and self._context_builder:
+                from pocketfox.agent.entries import ImageEntry
+
+                entry = ImageEntry(
+                    path=file_path,
+                    base64_data=image_data,
+                    mime_type=mime_type,
+                    caption=question,
+                )
+                entry._runtime_id = f"kept_image:{file_path.resolve()}"
+                self._context_builder.context.topic.add(entry)
+                caption += "\n(keeping in context)"
+
             content.append({"type": "text", "text": caption})
 
             return content

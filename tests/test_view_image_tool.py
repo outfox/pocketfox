@@ -1,11 +1,12 @@
 """Tests for the ViewImageTool."""
 
 import base64
+from unittest.mock import MagicMock
+
 import pytest
-from pathlib import Path
 
-from pocketfox.agent.tools.view_image import ViewImageTool, MAX_IMAGE_SIZE, SUPPORTED_TYPES
-
+from pocketfox.agent.entries import ImageEntry
+from pocketfox.agent.tools.view_image import MAX_IMAGE_SIZE, SUPPORTED_TYPES, ViewImageTool
 
 # Minimal valid 1x1 pixel images for testing (with correct magic bytes)
 TINY_PNG = base64.b64decode(
@@ -55,6 +56,12 @@ class TestViewImageToolSchema:
         tool = ViewImageTool()
         assert "question" in tool.parameters["properties"]
         assert "question" not in tool.parameters["required"]
+
+    def test_keep_param_in_schema(self):
+        tool = ViewImageTool()
+        assert "keep" in tool.parameters["properties"]
+        assert tool.parameters["properties"]["keep"]["type"] == "boolean"
+        assert "keep" not in tool.parameters["required"]
 
 
 class TestViewImageToolExecute:
@@ -287,3 +294,75 @@ class TestViewImageToolContentBlocks:
         text_block = result[1]
         assert text_block["type"] == "text"
         assert "photo.png" in text_block["text"]
+
+
+class TestViewImageToolKeep:
+    """Tests for the keep parameter."""
+
+    def _make_mock_context_builder(self):
+        """Create a mock ContextBuilder with a topic section."""
+        builder = MagicMock()
+        builder.context.topic.entries = []
+
+        def add_entry(entry):
+            builder.context.topic.entries.append(entry)
+
+        builder.context.topic.add = add_entry
+        return builder
+
+    @pytest.mark.asyncio
+    async def test_keep_false_does_not_add_entry(self, tmp_path):
+        """Default keep=False should not add entries to context."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        builder = self._make_mock_context_builder()
+        tool = ViewImageTool(allowed_dir=tmp_path, context_builder=builder)
+        await tool.execute(path=str(img), keep=False)
+
+        assert len(builder.context.topic.entries) == 0
+
+    @pytest.mark.asyncio
+    async def test_keep_true_adds_image_entry(self, tmp_path):
+        """keep=True should add an ImageEntry to context.topic."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        builder = self._make_mock_context_builder()
+        tool = ViewImageTool(allowed_dir=tmp_path, context_builder=builder)
+        result = await tool.execute(path=str(img), keep=True)
+
+        assert len(builder.context.topic.entries) == 1
+        entry = builder.context.topic.entries[0]
+        assert isinstance(entry, ImageEntry)
+        assert hasattr(entry, "_runtime_id")
+
+        # Caption should mention "keeping in context"
+        text_block = result[1]
+        assert "keeping in context" in text_block["text"]
+
+    @pytest.mark.asyncio
+    async def test_keep_true_without_context_builder(self, tmp_path):
+        """keep=True without context_builder should work normally."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        tool = ViewImageTool(allowed_dir=tmp_path)  # No context_builder
+        result = await tool.execute(path=str(img), keep=True)
+
+        # Should still succeed, just no entry added
+        assert isinstance(result, list)
+        assert "keeping in context" not in result[1]["text"]
+
+    @pytest.mark.asyncio
+    async def test_keep_true_with_question(self, tmp_path):
+        """keep=True should store the question as caption."""
+        img = tmp_path / "test.png"
+        img.write_bytes(TINY_PNG)
+
+        builder = self._make_mock_context_builder()
+        tool = ViewImageTool(allowed_dir=tmp_path, context_builder=builder)
+        await tool.execute(path=str(img), question="What is this?", keep=True)
+
+        entry = builder.context.topic.entries[0]
+        assert entry._caption == "What is this?"

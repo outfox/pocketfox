@@ -3,44 +3,14 @@
 import base64
 import mimetypes
 import platform
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from loom import Context, Entry, StringEntry, FileEntry
+from loom import Context, FileEntry, StringEntry
 
+from pocketfox.agent.entries import DateTimeEntry, ImageEntry
 from pocketfox.agent.memory import MemoryStore
 from pocketfox.agent.skills import SkillsLoader
-
-
-class DateTimeEntry(Entry):
-    """
-    A volatile entry that renders the current date/time.
-    
-    Always returns a unique identity to prevent caching — this entry
-    should be placed after all cache breakpoints to avoid invalidating
-    the cached prefix.
-    """
-    
-    def __init__(self, fmt: str = "%Y-%m-%d %H:%M (%A)", name: str | None = None):
-        """
-        Args:
-            fmt: strftime format string.
-            name: Entry name (default: "Current Time").
-        """
-        super().__init__(name or "Current Time")
-        self._fmt = fmt
-    
-    def compile(self) -> str:
-        """Compile to current timestamp."""
-        return datetime.now().strftime(self._fmt)
-    
-    def identity(self) -> str:
-        """Always unique — volatile entry, never deduplicated."""
-        return f"datetime:{id(self)}"
-    
-    def __repr__(self) -> str:
-        return f"DateTimeEntry(fmt={self._fmt!r})"
 
 
 class ContextBuilder:
@@ -374,7 +344,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             cache_breakpoints=["topic"],
             clear_volatile=False,  # We'll handle step/attention separately
         )
-        
+
+        # Inject kept image blocks into the system message
+        self._inject_image_blocks(messages, ctx)
+
         # Add history with cache breakpoint on the LAST message
         # This allows Anthropic to cache the entire conversation prefix
         if history:
@@ -445,6 +418,37 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             return content
         return ""
 
+    def _inject_image_blocks(self, messages: list[dict[str, Any]], ctx: Context) -> None:
+        """Inject kept ImageEntry blocks into the system message."""
+        image_entries = [e for e in ctx.topic.entries if isinstance(e, ImageEntry)]
+        if not image_entries:
+            return
+
+        # Find the system message
+        if not messages or messages[0].get("role") != "system":
+            return
+
+        sys_msg = messages[0]
+        content = sys_msg.get("content", "")
+
+        # Normalize to list of content blocks
+        if isinstance(content, str):
+            blocks = [{"type": "text", "text": content}]
+        else:
+            blocks = list(content)
+
+        # Append image blocks from each ImageEntry
+        for entry in image_entries:
+            blocks.extend(entry.compile_blocks())
+
+        # Move cache_control to the last block
+        for block in blocks:
+            block.pop("cache_control", None)
+        if blocks:
+            blocks[-1]["cache_control"] = {"type": "ephemeral"}
+
+        sys_msg["content"] = blocks
+
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
         """Build user message content with optional base64-encoded images."""
         if not media:
@@ -457,7 +461,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             if not p.is_file() or not mime or not mime.startswith("image/"):
                 continue
             b64 = base64.b64encode(p.read_bytes()).decode()
-            images.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+            images.append({
+                "type": "image",
+                "source": {"type": "base64", "media_type": mime, "data": b64},
+            })
         
         if not images:
             return text
