@@ -1,17 +1,18 @@
 """Tests for TOML config loading, saving, and round-trip."""
 
+import sys
 import tomllib
 from pathlib import Path
 
 import pytest
 import tomli_w
 
-from nanobot.config.loader import (
+from pocketfox.config.loader import (
     _strip_none,
     load_config,
     save_config,
 )
-from nanobot.config.schema import Config
+from pocketfox.config.schema import Config
 
 
 def test_load_toml(tmp_path: Path):
@@ -19,16 +20,17 @@ def test_load_toml(tmp_path: Path):
     toml_path = tmp_path / "config.toml"
     data = {
         "providers": {"openrouter": {"api_key": "sk-test-123"}},
-        "agents": {"defaults": {"model": "openrouter/claude-opus-4-5"}},
+        "agents": {"defaults": {"model": "openrouter/claude-sonnet-4-6"}},
     }
     with open(toml_path, "wb") as f:
         tomli_w.dump(data, f)
 
     config = load_config(toml_path)
     assert config.providers.openrouter.api_key == "sk-test-123"
-    assert config.agents.defaults.model == "openrouter/claude-opus-4-5"
+    assert config.agents.defaults.model == "openrouter/claude-sonnet-4-6"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file permissions not supported on Windows")
 def test_save_sets_permissions(tmp_path: Path):
     """save_config sets file permissions to 0o600."""
     toml_path = tmp_path / "config.toml"
@@ -40,8 +42,8 @@ def test_save_sets_permissions(tmp_path: Path):
 
 def test_default_config_when_no_file(tmp_path: Path, monkeypatch):
     """Returns default Config when no config file exists."""
-    nanobot_dir = tmp_path / ".nanobot"
-    nanobot_dir.mkdir()
+    pocketfox_dir = tmp_path / ".pocketfox"
+    pocketfox_dir.mkdir()
 
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     config = load_config()

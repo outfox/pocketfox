@@ -253,6 +253,7 @@ class TestViewImageToolSecurity:
     async def test_resolve_path_expands_user(self, tmp_path, monkeypatch):
         """Test that _resolve_path expands ~ to home directory."""
         monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
         tool = ViewImageTool()
         resolved = tool._resolve_path("~/test.png")
         assert resolved.is_absolute()
