@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from loguru import logger
-from loom import Context, Entry, FileEntry, StringEntry
+from loom import Context, Entry, StringEntry
 
-from pocketfox.agent.entries import DateTimeEntry, ImageEntry
+from pocketfox.agent.entries import DateTimeEntry, ImageEntry, KeptFileEntry
 from pocketfox.agent.memory import MemoryStore
 from pocketfox.agent.skills import SkillsLoader
 
@@ -97,20 +97,11 @@ class ContextBuilder:
         for filename in self.BOOTSTRAP_FILES:
             file_path = self.workspace / filename
             if file_path.exists():
-                ctx.foundation.add(
-                    FileEntry(
-                        file_path,
-                        name=filename,
-                    )
-                )
+                ctx.foundation.add(KeptFileEntry(path=file_path, name=filename))
 
-        long_term_memory = self.memory.get_long_term_memory()
-        if long_term_memory:
+        if self.memory.memory_file.exists():
             ctx.foundation.add(
-                StringEntry(
-                    long_term_memory,
-                    name="Long-term Memory",
-                )
+                KeptFileEntry(path=self.memory.memory_file, name="Long-term Memory")
             )
 
         # Focus: Skills
@@ -141,14 +132,9 @@ class ContextBuilder:
             )
 
         # Topic: Session-specific memory (daily notes)
-        session_memory = self.memory.get_session_memory()
-        if session_memory:
-            ctx.topic.add(
-                StringEntry(
-                    session_memory,
-                    name="Today's Notes",
-                )
-            )
+        today_file = self.memory.get_today_file()
+        if today_file.exists():
+            ctx.topic.add(KeptFileEntry(path=today_file, name="Today's Notes"))
 
         # Attention: Volatile data (current time)
         ctx.attention.add(DateTimeEntry(name="Current Time"))
@@ -214,22 +200,26 @@ class ContextBuilder:
                     return True
         return False
 
-    def clear_kept_images(self) -> int:
-        """Remove all ImageEntry objects from the persistent context.
+    def clear_kept_entries(self) -> int:
+        """Remove all kept entries (images, files) from the persistent context.
 
         Returns:
-            Number of image entries removed.
+            Number of entries removed.
         """
         ctx = self.context
         removed = 0
+        kept_types = (ImageEntry, KeptFileEntry)
         for section_name in ("foundation", "focus", "topic", "step", "attention"):
             section = getattr(ctx, section_name)
             before = len(section.entries)
-            section.entries = [e for e in section.entries if not isinstance(e, ImageEntry)]
+            section.entries = [e for e in section.entries if not isinstance(e, kept_types)]
             removed += before - len(section.entries)
         if removed:
-            logger.info(f"Cleared {removed} kept image(s) from context")
+            logger.info(f"Cleared {removed} kept entry/entries from context")
         return removed
+
+    # Backward-compatible alias
+    clear_kept_images = clear_kept_entries
 
     def list_entries(self, section: str) -> list[dict[str, str]]:
         """

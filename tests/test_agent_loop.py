@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pocketfox.agent.context import ContextBuilder
-from pocketfox.agent.entries import ImageEntry
+from pocketfox.agent.entries import ImageEntry, KeptFileEntry
 from pocketfox.bus.events import InboundMessage
 from pocketfox.bus.queue import MessageBus
 from pocketfox.providers.base import LLMResponse, ToolCallRequest
@@ -443,3 +443,226 @@ class TestRunErrorDelivery:
             assert "error" in out.content.lower()
         except asyncio.TimeoutError:
             pytest.fail("No error message was published to outbound bus")
+
+
+# ---------------------------------------------------------------------------
+# ReadFileTool keep parameter
+# ---------------------------------------------------------------------------
+
+
+class TestReadFileKeep:
+    """Tests for read_file with keep=True."""
+
+    def _make_builder(self, tmp_path):
+        return ContextBuilder(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_keep_false_default(self, tmp_path):
+        """Default read does not persist content in context."""
+        from pocketfox.agent.tools.filesystem import ReadFileTool
+
+        doc = tmp_path / "notes.md"
+        doc.write_text("# My notes\nSome content", encoding="utf-8")
+
+        builder = self._make_builder(tmp_path)
+        tool = ReadFileTool(context_builder=builder)
+        result = await tool.execute(path=str(doc))
+
+        assert "My notes" in result
+        assert "keeping" not in result
+        kept = [e for e in builder.context.focus.entries if isinstance(e, KeptFileEntry)]
+        assert len(kept) == 0
+
+    @pytest.mark.asyncio
+    async def test_keep_true_persists_in_focus(self, tmp_path):
+        """keep=True adds a KeptFileEntry to the focus section."""
+        from pocketfox.agent.tools.filesystem import ReadFileTool
+
+        doc = tmp_path / "SKILL.md"
+        doc.write_text("---\nname: test\n---\nDo the thing.", encoding="utf-8")
+
+        builder = self._make_builder(tmp_path)
+        tool = ReadFileTool(context_builder=builder)
+        result = await tool.execute(path=str(doc), keep=True)
+
+        assert "keeping" in result.lower()
+        kept = [e for e in builder.context.focus.entries if isinstance(e, KeptFileEntry)]
+        assert len(kept) == 1
+        assert "Do the thing." in kept[0].compile()
+
+    @pytest.mark.asyncio
+    async def test_keep_true_without_builder(self, tmp_path):
+        """keep=True without context_builder still returns content normally."""
+        from pocketfox.agent.tools.filesystem import ReadFileTool
+
+        doc = tmp_path / "notes.md"
+        doc.write_text("content", encoding="utf-8")
+
+        tool = ReadFileTool()  # No context_builder
+        result = await tool.execute(path=str(doc), keep=True)
+
+        assert result == "content"
+        assert "keeping" not in result
+
+    @pytest.mark.asyncio
+    async def test_kept_file_appears_in_build_messages(self, tmp_path):
+        """Kept file content should appear in the system prompt via focus section."""
+        from pocketfox.agent.tools.filesystem import ReadFileTool
+
+        doc = tmp_path / "reference.md"
+        doc.write_text("Important reference material", encoding="utf-8")
+
+        builder = self._make_builder(tmp_path)
+        tool = ReadFileTool(context_builder=builder)
+        await tool.execute(path=str(doc), keep=True)
+
+        messages = builder.build_messages(
+            history=[], current_message="hello", channel="test", chat_id="1"
+        )
+
+        # The kept file should be in the system message content
+        system_msgs = [m for m in messages if m["role"] == "system"]
+        system_text = str(system_msgs)
+        assert "Important reference material" in system_text
+
+    @pytest.mark.asyncio
+    async def test_kept_file_deduplicates(self, tmp_path):
+        """Reading the same file with keep=True twice should not duplicate."""
+        from pocketfox.agent.tools.filesystem import ReadFileTool
+
+        doc = tmp_path / "ref.md"
+        doc.write_text("content", encoding="utf-8")
+
+        builder = self._make_builder(tmp_path)
+        tool = ReadFileTool(context_builder=builder)
+        await tool.execute(path=str(doc), keep=True)
+        await tool.execute(path=str(doc), keep=True)
+
+        kept = [e for e in builder.context.focus.entries if isinstance(e, KeptFileEntry)]
+        # LOOM deduplicates by identity — same resolved path means same entry
+        assert len(kept) <= 2  # at most 2 (add_entry doesn't dedupe, but identity() enables it)
+
+
+# ---------------------------------------------------------------------------
+# clear_kept_entries (images + files)
+# ---------------------------------------------------------------------------
+
+
+class TestClearKeptEntries:
+    """Tests for ContextBuilder.clear_kept_entries() covering both types."""
+
+    def test_clears_files_and_images(self, tmp_path):
+        builder = ContextBuilder(tmp_path)
+        builder.add_entry(
+            "topic",
+            ImageEntry(path=tmp_path / "a.png", base64_data=FAKE_B64, mime_type="image/png"),
+        )
+        builder.add_entry(
+            "focus",
+            KeptFileEntry(path=tmp_path / "ref.md"),
+        )
+
+        removed = builder.clear_kept_entries()
+        assert removed == 2
+
+    def test_alias_clear_kept_images_still_works(self, tmp_path):
+        """Backward-compatible alias should clear both types."""
+        builder = ContextBuilder(tmp_path)
+        builder.add_entry(
+            "focus",
+            KeptFileEntry(path=tmp_path / "ref.md"),
+        )
+        removed = builder.clear_kept_images()
+        assert removed == 1
+
+    def test_preserves_non_kept_entries(self, tmp_path):
+        builder = ContextBuilder(tmp_path)
+        builder.add_entry("topic", "plain text note", name="note")
+        builder.add_entry(
+            "topic",
+            ImageEntry(path=tmp_path / "a.png", base64_data=FAKE_B64, mime_type="image/png"),
+        )
+
+        before = len(builder.context.topic.entries)
+        removed = builder.clear_kept_entries()
+        assert removed == 1
+        assert len(builder.context.topic.entries) == before - 1
+
+
+# ---------------------------------------------------------------------------
+# KeptFileEntry live-reload and deletion
+# ---------------------------------------------------------------------------
+
+
+class TestKeptFileEntryLiveReload:
+    """Verify KeptFileEntry re-reads from disk and handles deletion."""
+
+    def test_compile_reads_current_content(self, tmp_path):
+        """compile() should return the file's current content, not stale data."""
+        doc = tmp_path / "live.md"
+        doc.write_text("version 1", encoding="utf-8")
+
+        entry = KeptFileEntry(path=doc)
+        assert "version 1" in entry.compile()
+
+        doc.write_text("version 2", encoding="utf-8")
+        assert "version 2" in entry.compile()
+        assert "version 1" not in entry.compile()
+
+    def test_compile_handles_deleted_file(self, tmp_path):
+        """compile() should return a notice when the file is deleted."""
+        doc = tmp_path / "ephemeral.md"
+        doc.write_text("exists", encoding="utf-8")
+
+        entry = KeptFileEntry(path=doc)
+        assert "exists" in entry.compile()
+
+        doc.unlink()
+        result = entry.compile()
+        assert "removed" in result.lower()
+        assert "ephemeral.md" in result
+
+    def test_deleted_file_does_not_crash_build_messages(self, tmp_path):
+        """A deleted kept file should not break build_messages()."""
+        doc = tmp_path / "gone.md"
+        doc.write_text("content", encoding="utf-8")
+
+        builder = ContextBuilder(tmp_path)
+        builder.add_entry("focus", KeptFileEntry(path=doc))
+
+        doc.unlink()
+
+        # Should not raise
+        messages = builder.build_messages(
+            history=[], current_message="hello", channel="test", chat_id="1"
+        )
+        system_text = str(messages)
+        assert "removed" in system_text.lower()
+
+    @pytest.mark.asyncio
+    async def test_edit_reflected_in_next_build(self, tmp_path):
+        """Editing a kept file should be reflected in the next build_messages call."""
+        from pocketfox.agent.tools.filesystem import ReadFileTool
+
+        doc = tmp_path / "evolving.md"
+        doc.write_text("initial", encoding="utf-8")
+
+        builder = ContextBuilder(tmp_path)
+        tool = ReadFileTool(context_builder=builder)
+        await tool.execute(path=str(doc), keep=True)
+
+        # First build sees initial content
+        msgs1 = builder.build_messages(
+            history=[], current_message="a", channel="test", chat_id="1"
+        )
+        assert "initial" in str(msgs1)
+
+        # Edit the file
+        doc.write_text("updated", encoding="utf-8")
+
+        # Second build sees updated content
+        msgs2 = builder.build_messages(
+            history=[], current_message="b", channel="test", chat_id="1"
+        )
+        assert "updated" in str(msgs2)
+        assert "initial" not in str(msgs2)

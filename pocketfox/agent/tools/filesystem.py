@@ -1,9 +1,14 @@
 """File system tools: read, write, edit."""
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pocketfox.agent.tools.base import Tool
+
+if TYPE_CHECKING:
+    from pocketfox.agent.context import ContextBuilder
 
 
 def _resolve_path(path: str, allowed_dir: Path | None = None) -> Path:
@@ -17,8 +22,13 @@ def _resolve_path(path: str, allowed_dir: Path | None = None) -> Path:
 class ReadFileTool(Tool):
     """Tool to read file contents."""
 
-    def __init__(self, allowed_dir: Path | None = None):
+    def __init__(
+        self,
+        allowed_dir: Path | None = None,
+        context_builder: ContextBuilder | None = None,
+    ):
         self._allowed_dir = allowed_dir
+        self._context_builder = context_builder
 
     @property
     def name(self) -> str:
@@ -32,11 +42,22 @@ class ReadFileTool(Tool):
     def parameters(self) -> dict[str, Any]:
         return {
             "type": "object",
-            "properties": {"path": {"type": "string", "description": "The file path to read"}},
+            "properties": {
+                "path": {"type": "string", "description": "The file path to read"},
+                "keep": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, persist the file content in the system context so it "
+                        "remains available across subsequent turns (like loading a skill). "
+                        "Best for reference docs, instructions, or session-defining files. "
+                        "Default: false."
+                    ),
+                },
+            },
             "required": ["path"],
         }
 
-    async def execute(self, path: str, **kwargs: Any) -> str:
+    async def execute(self, path: str, keep: bool = False, **kwargs: Any) -> str:
         try:
             file_path = _resolve_path(path, self._allowed_dir)
             if not file_path.exists():
@@ -45,6 +66,14 @@ class ReadFileTool(Tool):
                 return f"Error: Not a file: {path}"
 
             content = file_path.read_text(encoding="utf-8")
+
+            if keep and self._context_builder:
+                from pocketfox.agent.entries import KeptFileEntry
+
+                entry = KeptFileEntry(path=file_path)
+                self._context_builder.add_entry("focus", entry)
+                return f"{content}\n\n(keeping {file_path.name} in context)"
+
             return content
         except PermissionError as e:
             return f"Error: {e}"
