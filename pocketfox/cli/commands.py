@@ -370,52 +370,48 @@ def gateway(
     )
 
     # Set cron callback (needs agent)
+    from pocketfox.bus.events import OutboundMessage
+    from pocketfox.heartbeat.service import HEARTBEAT_OK_TOKEN
+
     defaults = config.agents.defaults
+
+    def _resolve_target(
+        channel_override: str | None = None, chat_id_override: str | None = None
+    ) -> tuple[str, str]:
+        channel = channel_override or defaults.default_channel or "cli"
+        chat_id = chat_id_override or defaults.default_chat_id or "direct"
+        return channel, chat_id
+
+    async def _deliver(channel: str, chat_id: str, content: str) -> None:
+        if chat_id != "direct":
+            await bus.publish_outbound(
+                OutboundMessage(channel=channel, chat_id=chat_id, content=content)
+            )
 
     async def on_cron_job(job: CronJob) -> str | None:
         """Execute a cron job through the agent."""
-        eff_channel = job.payload.channel or defaults.default_channel or "cli"
-        eff_chat_id = job.payload.to or defaults.default_chat_id or "direct"
-
+        eff_channel, eff_chat_id = _resolve_target(job.payload.channel, job.payload.to)
         response = await agent.process_direct(
             job.payload.message,
             session_key=f"cron:{job.id}",
             channel=eff_channel,
             chat_id=eff_chat_id,
         )
-        if job.payload.deliver and eff_chat_id != "direct":
-            from pocketfox.bus.events import OutboundMessage
-
-            await bus.publish_outbound(
-                OutboundMessage(
-                    channel=eff_channel,
-                    chat_id=eff_chat_id,
-                    content=response or "",
-                )
-            )
+        if job.payload.deliver:
+            await _deliver(eff_channel, eff_chat_id, response or "")
         return response
 
     cron.on_job = on_cron_job
 
     # Create heartbeat service
-    async def on_heartbeat(prompt: str) -> str:
+    async def on_heartbeat(prompt: str) -> str | None:
         """Execute heartbeat through the agent."""
-        from pocketfox.bus.events import OutboundMessage
-        from pocketfox.heartbeat.service import HEARTBEAT_OK_TOKEN
-
-        eff_channel = defaults.default_channel or "cli"
-        eff_chat_id = defaults.default_chat_id or "direct"
-
+        eff_channel, eff_chat_id = _resolve_target()
         response = await agent.process_direct(
             prompt, session_key="heartbeat", channel=eff_channel, chat_id=eff_chat_id
         )
-
-        # Deliver actionable heartbeat results to default channel
-        if eff_chat_id != "direct" and HEARTBEAT_OK_TOKEN not in (response or ""):
-            await bus.publish_outbound(
-                OutboundMessage(channel=eff_channel, chat_id=eff_chat_id, content=response or "")
-            )
-
+        if HEARTBEAT_OK_TOKEN not in (response or ""):
+            await _deliver(eff_channel, eff_chat_id, response or "")
         return response
 
     heartbeat = HeartbeatService(
