@@ -370,21 +370,26 @@ def gateway(
     )
 
     # Set cron callback (needs agent)
+    defaults = config.agents.defaults
+
     async def on_cron_job(job: CronJob) -> str | None:
         """Execute a cron job through the agent."""
+        eff_channel = job.payload.channel or defaults.default_channel or "cli"
+        eff_chat_id = job.payload.to or defaults.default_chat_id or "direct"
+
         response = await agent.process_direct(
             job.payload.message,
             session_key=f"cron:{job.id}",
-            channel=job.payload.channel or "cli",
-            chat_id=job.payload.to or "direct",
+            channel=eff_channel,
+            chat_id=eff_chat_id,
         )
-        if job.payload.deliver and job.payload.to:
+        if job.payload.deliver and eff_chat_id != "direct":
             from pocketfox.bus.events import OutboundMessage
 
             await bus.publish_outbound(
                 OutboundMessage(
-                    channel=job.payload.channel or "cli",
-                    chat_id=job.payload.to,
+                    channel=eff_channel,
+                    chat_id=eff_chat_id,
                     content=response or "",
                 )
             )
@@ -395,7 +400,23 @@ def gateway(
     # Create heartbeat service
     async def on_heartbeat(prompt: str) -> str:
         """Execute heartbeat through the agent."""
-        return await agent.process_direct(prompt, session_key="heartbeat")
+        from pocketfox.bus.events import OutboundMessage
+        from pocketfox.heartbeat.service import HEARTBEAT_OK_TOKEN
+
+        eff_channel = defaults.default_channel or "cli"
+        eff_chat_id = defaults.default_chat_id or "direct"
+
+        response = await agent.process_direct(
+            prompt, session_key="heartbeat", channel=eff_channel, chat_id=eff_chat_id
+        )
+
+        # Deliver actionable heartbeat results to default channel
+        if eff_chat_id != "direct" and HEARTBEAT_OK_TOKEN not in (response or ""):
+            await bus.publish_outbound(
+                OutboundMessage(channel=eff_channel, chat_id=eff_chat_id, content=response or "")
+            )
+
+        return response
 
     heartbeat = HeartbeatService(
         workspace=config.workspace_path,
