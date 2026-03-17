@@ -257,6 +257,19 @@ class AgentLoop:
                 else:
                     logger.debug(f"Usage: {prompt} prompt, {completion} completion")
 
+            # LLM error — don't save to session, report to user
+            if response.finish_reason == "error":
+                error_detail = response.content or "Unknown error"
+                logger.error(f"LLM error for {msg.channel}:{msg.sender_id}: {error_detail}")
+                user_msg = (
+                    "I couldn't process your message due to an API error.\n\n"
+                    f"<details><summary>Error details</summary>\n\n"
+                    f"{error_detail}\n\n</details>"
+                )
+                return OutboundMessage(
+                    channel=msg.channel, chat_id=msg.chat_id, content=user_msg
+                )
+
             # Handle tool calls
             if response.has_tool_calls:
                 # Add assistant message with tool calls
@@ -382,6 +395,19 @@ class AgentLoop:
                     )
                 else:
                     logger.debug(f"Usage: {prompt} prompt, {completion} completion")
+
+            # LLM error — don't save to session
+            if response.finish_reason == "error":
+                error_detail = response.content or "Unknown error"
+                logger.error(f"LLM error for system message: {error_detail}")
+                user_msg = (
+                    "A background task failed due to an API error.\n\n"
+                    f"<details><summary>Error details</summary>\n\n"
+                    f"{error_detail}\n\n</details>"
+                )
+                return OutboundMessage(
+                    channel=origin_channel, chat_id=origin_chat_id, content=user_msg
+                )
 
             if response.has_tool_calls:
                 tool_call_dicts = [
