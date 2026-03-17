@@ -253,6 +253,8 @@ class TTYAgent:
     def reset(self) -> None:
         """Reset session history."""
         self._session_history = []
+        if self._context is not None:
+            self._context.clear_kept_images()
         console.print("[dim]Session reset.[/dim]")
 
 

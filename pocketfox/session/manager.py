@@ -1,6 +1,7 @@
 """Session management for conversation history."""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -78,6 +79,7 @@ class SessionManager:
         self.workspace = workspace
         self.sessions_dir = ensure_dir(get_paths().data / "sessions")
         self._cache: dict[str, Session] = {}
+        self.on_session_reset: Callable[[], None] | None = None
 
     def _get_session_path(self, key: str) -> Path:
         """Get the file path for a session."""

@@ -508,6 +508,10 @@ class TelegramChannel(BaseChannel):
         session.clear()
         self.session_manager.save(session)
 
+        # Clear kept images from agent context
+        if self.session_manager.on_session_reset:
+            self.session_manager.on_session_reset()
+
         logger.info(f"Session reset for {session_key} (cleared {msg_count} messages)")
         await update.message.reply_text("🔄 Conversation history cleared. Let's start fresh!")
 
@@ -562,9 +566,13 @@ class TelegramChannel(BaseChannel):
             return
 
         session.messages = session.messages[-n:]
-        session.messages = session.messages[-n:]
         session.updated_at = datetime.now()
         self.session_manager.save(session)
+
+        # Clear kept images from agent context
+        if self.session_manager.on_session_reset:
+            self.session_manager.on_session_reset()
+
         removed = before - len(session.messages)
         remaining = len(session.messages)
         logger.info(

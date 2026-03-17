@@ -76,6 +76,7 @@ class AgentLoop:
 
         self.context = ContextBuilder(workspace)
         self.sessions = session_manager or SessionManager(workspace)
+        self.sessions.on_session_reset = self.context.clear_kept_images
         self.tools = ToolRegistry()
         self.subagents = SubagentManager(
             provider=provider,

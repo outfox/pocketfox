@@ -326,6 +326,10 @@ class SignalChannel(BaseChannel):
         session.clear()
         self.session_manager.save(session)
 
+        # Clear kept images from agent context
+        if self.session_manager.on_session_reset:
+            self.session_manager.on_session_reset()
+
         redacted_key = f"{self.name}:{redact_phone_number(chat_id)}"
         logger.info(f"Session reset for {redacted_key} (cleared {msg_count} messages)")
         await self.send(

@@ -6,6 +6,7 @@ import platform
 from pathlib import Path
 from typing import Any, ClassVar
 
+from loguru import logger
 from loom import Context, Entry, FileEntry, StringEntry
 
 from pocketfox.agent.entries import DateTimeEntry, ImageEntry
@@ -212,6 +213,23 @@ class ContextBuilder:
                     section.entries.pop(i)
                     return True
         return False
+
+    def clear_kept_images(self) -> int:
+        """Remove all ImageEntry objects from the persistent context.
+
+        Returns:
+            Number of image entries removed.
+        """
+        ctx = self.context
+        removed = 0
+        for section_name in ("foundation", "focus", "topic", "step", "attention"):
+            section = getattr(ctx, section_name)
+            before = len(section.entries)
+            section.entries = [e for e in section.entries if not isinstance(e, ImageEntry)]
+            removed += before - len(section.entries)
+        if removed:
+            logger.info(f"Cleared {removed} kept image(s) from context")
+        return removed
 
     def list_entries(self, section: str) -> list[dict[str, str]]:
         """
