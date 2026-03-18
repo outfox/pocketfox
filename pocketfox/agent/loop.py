@@ -221,6 +221,7 @@ class AgentLoop:
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=msg.chat_id,
+            cache_ttl=msg.cache_ttl,
         )
 
         # Agent loop
@@ -455,6 +456,7 @@ class AgentLoop:
         session_key: str = "cli:direct",
         channel: str = "cli",
         chat_id: str = "direct",
+        cache_ttl: int | None = None,
     ) -> str:
         """
         Process a message directly (for CLI or cron usage).
@@ -464,11 +466,15 @@ class AgentLoop:
             session_key: Session identifier.
             channel: Source channel (for context).
             chat_id: Source chat ID (for context).
+            cache_ttl: Optional Anthropic prompt cache TTL in seconds.
 
         Returns:
             The agent's response.
         """
-        msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
+        msg = InboundMessage(
+            channel=channel, sender_id="user", chat_id=chat_id, content=content,
+            cache_ttl=cache_ttl,
+        )
 
         response = await self._process_message(msg)
         return response.content if response else ""

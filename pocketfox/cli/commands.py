@@ -408,7 +408,11 @@ def gateway(
         """Execute heartbeat through the agent."""
         eff_channel, eff_chat_id = _resolve_target()
         response = await agent.process_direct(
-            prompt, session_key="heartbeat", channel=eff_channel, chat_id=eff_chat_id
+            prompt,
+            session_key="heartbeat",
+            channel=eff_channel,
+            chat_id=eff_chat_id,
+            cache_ttl=3600,
         )
         if HEARTBEAT_OK_TOKEN not in (response or ""):
             await _deliver(eff_channel, eff_chat_id, response or "")

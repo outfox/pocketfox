@@ -351,6 +351,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         media: list[str] | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
+        cache_ttl: int | None = None,
     ) -> list[dict[str, Any]]:
         """
         Build the complete message list for an LLM call.
@@ -379,12 +380,16 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         messages = ctx.to_messages(
             cache_breakpoints=["topic"],
             clear_volatile=False,  # We'll handle step/attention separately
+            cache_ttl=cache_ttl,
         )
 
         # Add history with cache breakpoint on the LAST message
         # This allows Anthropic to cache the entire conversation prefix
         if history:
             breakpoint_idx = len(history) - 1
+            cc: dict = {"type": "ephemeral"}
+            if cache_ttl is not None:
+                cc["max_age_seconds"] = cache_ttl
 
             for i, msg in enumerate(history):
                 if i == breakpoint_idx:
@@ -398,7 +403,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                                     {
                                         "type": "text",
                                         "text": content,
-                                        "cache_control": {"type": "ephemeral"},
+                                        "cache_control": cc,
                                     }
                                 ],
                             }
@@ -410,7 +415,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                             if content_copy[j].get("type") == "text":
                                 content_copy[j] = {
                                     **content_copy[j],
-                                    "cache_control": {"type": "ephemeral"},
+                                    "cache_control": cc,
                                 }
                                 break
                         messages.append({"role": msg["role"], "content": content_copy})
