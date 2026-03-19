@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import base64
 import mimetypes
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pocketfox.agent.tools.base import Tool
+from pocketfox.utils.image import MAX_IMAGE_BYTES, encode_image_for_llm
 
 if TYPE_CHECKING:
     from pocketfox.agent.context import ContextBuilder
-
-# Maximum file size: 20 MB (Anthropic's limit for base64 images)
-MAX_IMAGE_SIZE = 20 * 1024 * 1024
 
 # Supported MIME types for Claude vision
 SUPPORTED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
@@ -99,18 +96,19 @@ class ViewImageTool(Tool):
                 supported = ", ".join(sorted(SUPPORTED_TYPES))
                 return f"Error: Unsupported image type '{mime_type}'. Supported: {supported}"
 
-            # Check file size
-            size = file_path.stat().st_size
-            if size > MAX_IMAGE_SIZE:
-                max_mb = MAX_IMAGE_SIZE / (1024 * 1024)
-                actual_mb = size / (1024 * 1024)
-                return f"Error: Image too large ({actual_mb:.1f} MB). Maximum: {max_mb:.0f} MB."
+            # Read and encode (re-encodes as JPEG if >5 MB)
+            raw = file_path.read_bytes()
+            result = encode_image_for_llm(raw, mime_type)
+            if result is None:
+                actual_mb = len(raw) / (1024 * 1024)
+                max_mb = MAX_IMAGE_BYTES / (1024 * 1024)
+                return (
+                    f"Error: Image too large ({actual_mb:.1f} MB). "
+                    f"Maximum: {max_mb:.0f} MB (even after re-encoding)."
+                )
 
-            # Read and encode
-            image_data = base64.b64encode(file_path.read_bytes()).decode("ascii")
-
-            # Build multimodal content blocks (OpenAI format for litellm compat)
-            data_uri = f"data:{mime_type};base64,{image_data}"
+            image_data, final_mime, reencoded = result
+            data_uri = f"data:{final_mime};base64,{image_data}"
             content: list[dict[str, Any]] = [
                 {
                     "type": "image_url",
@@ -120,6 +118,8 @@ class ViewImageTool(Tool):
 
             # Add context text
             caption = f"Image: {file_path.name}"
+            if reencoded:
+                caption += " (re-encoded to jpeg)"
             if question:
                 caption += f"\nQuestion: {question}"
 
@@ -130,7 +130,7 @@ class ViewImageTool(Tool):
                 entry = ImageEntry(
                     path=file_path,
                     base64_data=image_data,
-                    mime_type=mime_type,
+                    mime_type=final_mime,
                     caption=question,
                 )
                 self._context_builder.add_entry("topic", entry)

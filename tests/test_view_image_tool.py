@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from pocketfox.agent.entries import ImageEntry
-from pocketfox.agent.tools.view_image import MAX_IMAGE_SIZE, SUPPORTED_TYPES, ViewImageTool
+from pocketfox.agent.tools.view_image import SUPPORTED_TYPES, ViewImageTool
+from pocketfox.utils.image import MAX_IMAGE_BYTES
 
 # Minimal valid 1x1 pixel images for testing (with correct magic bytes)
 TINY_PNG = base64.b64decode(
@@ -184,7 +185,7 @@ class TestViewImageToolExecute:
         """Test error on oversized file."""
         img = tmp_path / "huge.png"
         # PNG magic header + padding to exceed the size limit
-        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * MAX_IMAGE_SIZE)
+        img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * MAX_IMAGE_BYTES)
 
         tool = ViewImageTool(allowed_dir=tmp_path)
         result = await tool.execute(path=str(img))

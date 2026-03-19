@@ -1,7 +1,5 @@
 """Context builder for assembling agent prompts using LOOM."""
 
-import base64
-import mimetypes
 import platform
 from pathlib import Path
 from typing import Any, ClassVar
@@ -523,20 +521,30 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         if not media:
             return text
 
+        from pocketfox.utils.image import encode_image_file
+
         images = []
+        notes: list[str] = []
         for path in media:
             p = Path(path)
-            mime, _ = mimetypes.guess_type(path)
-            if not p.is_file() or not mime or not mime.startswith("image/"):
+            if not p.is_file():
                 continue
-            b64 = base64.b64encode(p.read_bytes()).decode()
-            data_uri = f"data:{mime};base64,{b64}"
+            result = encode_image_file(p)
+            if result is None:
+                notes.append(f"(image {p.name} skipped: exceeds 5 MB limit)")
+                continue
+            data_uri, _b64, _mime, reencoded = result
+            if reencoded:
+                notes.append(f"(image {p.name} re-encoded to jpeg)")
             images.append(
                 {
                     "type": "image_url",
                     "image_url": {"url": data_uri},
                 }
             )
+
+        if notes:
+            text = text + "\n" + "\n".join(notes) if text else "\n".join(notes)
 
         if not images:
             return text
