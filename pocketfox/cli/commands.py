@@ -517,6 +517,13 @@ def agent(
     from pocketfox.agent.loop import AgentLoop
     from pocketfox.bus.queue import MessageBus
     from pocketfox.config.loader import load_config
+    from pocketfox.log import configure_logging
+    from pocketfox.utils.helpers import get_paths
+
+    # In interactive mode, redirect logs to file so they don't pollute the REPL.
+    # Single-message mode keeps stderr logging for scripting/piping.
+    if not message:
+        configure_logging(log_file=get_paths().logs / "agent.log")
 
     config = load_config()
 

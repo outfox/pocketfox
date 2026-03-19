@@ -51,6 +51,10 @@ class PocketfoxPaths:
         return ensure_dir(self.config / "agents" / self.agent_name)
 
     @property
+    def logs(self) -> Path:
+        return ensure_dir(self.data / "logs")
+
+    @property
     def memory(self) -> Path:
         return ensure_dir(self.workspace / "memory")
 
