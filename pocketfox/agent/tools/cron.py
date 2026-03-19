@@ -63,14 +63,14 @@ class CronTool(Tool):
         return f"Unknown action: {action}"
 
     def _add_job(self, message: str, every_seconds: int | None, cron_expr: str | None) -> str:
-        from pocketfox.agent.task_context import current_task
+        from pocketfox.agent.task_context import get_task_context
 
         if not message:
             return "Error: message is required for add"
 
-        tc = current_task.get()
-        channel = tc.channel if tc else ""
-        chat_id = tc.chat_id if tc else ""
+        tc = get_task_context()
+        channel = tc.channel
+        chat_id = tc.chat_id
         if not channel or not chat_id:
             return "Error: no session context (channel/chat_id)"
 

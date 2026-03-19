@@ -36,6 +36,10 @@ if TYPE_CHECKING:
     from pocketfox.config.schema import ExecToolConfig, VoiceToolConfig
     from pocketfox.cron.service import CronService
 
+# Sentinel prefix returned by _run_llm_loop on LLM API errors.
+# Callers check this to avoid saving error responses to session history.
+_LLM_ERROR_PREFIX = "\x00LLM_ERROR\x00"
+
 
 class AgentLoop:
     """
@@ -235,6 +239,14 @@ class AgentLoop:
         # Run the LLM loop
         final_content = await self._run_llm_loop(messages, session)
 
+        # LLM error — don't save to session
+        if self._is_llm_error(final_content):
+            error_text = self._strip_error_prefix(final_content)
+            outputs = self.router.get_outputs(context_name, msg.channel, msg.chat_id)
+            return [
+                OutboundMessage(channel=ch, chat_id=cid, content=error_text) for ch, cid in outputs
+            ]
+
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
 
@@ -256,11 +268,13 @@ class AgentLoop:
     async def _run_llm_loop(
         self,
         messages: list[dict],
-        session: object,
-        *,
-        is_error_return: bool = True,
+        session: SessionManager | object | None = None,
     ) -> str | None:
-        """Run the iterative LLM + tool execution loop. Returns final text or None."""
+        """Run the iterative LLM + tool execution loop.
+
+        Returns final text, or a string prefixed with _LLM_ERROR_PREFIX on
+        API error, or None if max iterations exhausted.
+        """
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
@@ -279,7 +293,7 @@ class AgentLoop:
                 cache_write = usage.get("cache_creation_input_tokens", 0)
                 prompt = usage.get("prompt_tokens", 0)
                 completion = usage.get("completion_tokens", 0)
-                if hasattr(session, "metadata"):
+                if session and hasattr(session, "metadata"):
                     session.metadata["last_prompt_tokens"] = prompt
                 if cache_read or cache_write:
                     logger.info(
@@ -289,17 +303,16 @@ class AgentLoop:
                 else:
                     logger.debug(f"Usage: {prompt} prompt, {completion} completion")
 
-            # LLM error
+            # LLM error — return sentinel-prefixed string so callers can detect it
             if response.finish_reason == "error":
                 error_detail = response.content or "Unknown error"
                 logger.error(f"LLM error: {error_detail}")
-                if is_error_return:
-                    return (
-                        "I couldn't process your message due to an API error.\n\n"
-                        f"<details><summary>Error details</summary>\n\n"
-                        f"{error_detail}\n\n</details>"
-                    )
-                return None
+                return (
+                    f"{_LLM_ERROR_PREFIX}"
+                    "I couldn't process your message due to an API error.\n\n"
+                    f"<details><summary>Error details</summary>\n\n"
+                    f"{error_detail}\n\n</details>"
+                )
 
             # Tool calls
             if response.has_tool_calls:
@@ -333,6 +346,16 @@ class AgentLoop:
                 return response.content
 
         return None
+
+    @staticmethod
+    def _is_llm_error(content: str | None) -> bool:
+        """Check if content is an LLM error sentinel from _run_llm_loop."""
+        return content is not None and content.startswith(_LLM_ERROR_PREFIX)
+
+    @staticmethod
+    def _strip_error_prefix(content: str) -> str:
+        """Strip the sentinel prefix to get user-facing error text."""
+        return content.removeprefix(_LLM_ERROR_PREFIX)
 
     async def _process_message(self, msg: InboundMessage) -> OutboundMessage | None:
         """Process a single inbound message (legacy non-router path)."""
@@ -369,8 +392,12 @@ class AgentLoop:
         final_content = await self._run_llm_loop(messages, session)
 
         # LLM error — return error directly without saving to session
-        if final_content and final_content.startswith("I couldn't process"):
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=final_content)
+        if self._is_llm_error(final_content):
+            return OutboundMessage(
+                channel=msg.channel,
+                chat_id=msg.chat_id,
+                content=self._strip_error_prefix(final_content),
+            )
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
@@ -411,7 +438,7 @@ class AgentLoop:
 
         # Resolve context files if router available
         context_files = None
-        if self.router and origin_context in self.router._contexts:
+        if self.router and self.router.has_context(origin_context):
             context_files = tuple(self.router.get_context_files(origin_context))
 
         # Build session key
@@ -432,12 +459,12 @@ class AgentLoop:
 
         final_content = await self._run_llm_loop(messages, session)
 
-        if final_content and final_content.startswith("I couldn't process"):
-            # LLM error — don't save
+        if self._is_llm_error(final_content):
+            error_text = self._strip_error_prefix(final_content)
             error_msg = (
                 "A background task failed due to an API error.\n\n"
                 f"<details><summary>Error details</summary>\n\n"
-                f"{final_content}\n\n</details>"
+                f"{error_text}\n\n</details>"
             )
             return [
                 [OutboundMessage(channel=origin_channel, chat_id=origin_chat_id, content=error_msg)]
@@ -451,7 +478,7 @@ class AgentLoop:
         self.sessions.save(session)
 
         # Resolve outputs
-        if self.router and origin_context in self.router._contexts:
+        if self.router and self.router.has_context(origin_context):
             outputs = self.router.get_outputs(origin_context, origin_channel, origin_chat_id)
         else:
             outputs = [(origin_channel, origin_chat_id)]

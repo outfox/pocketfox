@@ -50,13 +50,13 @@ class SpawnTool(Tool):
 
     async def execute(self, task: str, label: str | None = None, **kwargs: Any) -> str:
         """Spawn a subagent to execute the given task."""
-        from pocketfox.agent.task_context import current_task
+        from pocketfox.agent.task_context import get_task_context
 
-        tc = current_task.get()
+        tc = get_task_context()
         return await self._manager.spawn(
             task=task,
             label=label,
-            origin_channel=tc.channel if tc else "cli",
-            origin_chat_id=tc.chat_id if tc else "direct",
-            origin_context_name=tc.context_name if tc else "default",
+            origin_channel=tc.channel,
+            origin_chat_id=tc.chat_id,
+            origin_context_name=tc.context_name,
         )

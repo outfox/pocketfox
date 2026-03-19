@@ -440,9 +440,16 @@ def gateway(
         from zoneinfo import ZoneInfo
 
         from croniter import croniter
+        from loguru import logger as cron_logger
 
         tz = ZoneInfo(os.environ.get("TZ", "UTC"))
         workspace = config.workspace_path
+
+        def _is_heartbeat_ok(text: str | None) -> bool:
+            """Fuzzy match for HEARTBEAT_OK (matches HeartbeatService behavior)."""
+            if not text:
+                return False
+            return HEARTBEAT_OK_TOKEN.replace("_", "") in text.upper().replace("_", "")
 
         while True:
             try:
@@ -463,8 +470,6 @@ def gateway(
                                 all_empty = False
                                 break
                     if all_empty:
-                        from loguru import logger as cron_logger
-
                         cron_logger.debug(f"Context cron [{ctx_name}]: no tasks (files empty)")
                         continue
 
@@ -480,8 +485,7 @@ def gateway(
                     prompt = HEARTBEAT_PROMPT
 
                 # Set task context for this cron turn
-                eff_channel = defaults.default_channel or "cli"
-                eff_chat_id = defaults.default_chat_id or "direct"
+                eff_channel, eff_chat_id = _resolve_target()
                 tc = TaskContext(context_name=ctx_name, channel=eff_channel, chat_id=eff_chat_id)
                 current_task.set(tc)
 
@@ -495,20 +499,16 @@ def gateway(
                 )
 
                 # Deliver to outputs_always if not HEARTBEAT_OK
-                if HEARTBEAT_OK_TOKEN not in (response or ""):
+                if not _is_heartbeat_ok(response):
                     outputs = router.get_outputs(ctx_name, None, None)
                     for ch, cid in outputs:
                         await _deliver(ch, cid, response or "")
                 else:
-                    from loguru import logger as cron_logger
-
                     cron_logger.info(f"Context cron [{ctx_name}]: OK (no action needed)")
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                from loguru import logger as cron_logger
-
                 cron_logger.error(f"Context cron [{ctx_name}] error: {e}")
 
     async def run():

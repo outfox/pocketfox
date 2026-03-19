@@ -97,6 +97,10 @@ class ContextRouter:
         """Return contexts that have a cron schedule."""
         return [(name, cfg) for name, cfg in self._contexts.items() if cfg.cron]
 
+    def has_context(self, name: str) -> bool:
+        """Check if a context name exists."""
+        return name in self._contexts
+
     def get_config(self, name: str) -> ContextConfig:
         """Return the ContextConfig for a context name."""
         return self._contexts[name]

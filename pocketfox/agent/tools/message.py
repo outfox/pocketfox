@@ -68,11 +68,11 @@ class MessageTool(Tool):
         voice: list[str] | None = None,
         **kwargs: Any,
     ) -> str:
-        from pocketfox.agent.task_context import current_task
+        from pocketfox.agent.task_context import get_task_context
 
-        tc = current_task.get()
-        channel = channel or (tc.channel if tc else "")
-        chat_id = chat_id or (tc.chat_id if tc else "")
+        tc = get_task_context()
+        channel = channel or tc.channel
+        chat_id = chat_id or tc.chat_id
 
         if not channel or not chat_id:
             return "Error: No target channel/chat specified"
