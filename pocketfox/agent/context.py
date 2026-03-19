@@ -65,28 +65,28 @@ class ContextBuilder:
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
-        self._default_context_files = default_context_files or ["AGENTS.md", "TOOLS.md"]
-        self._context_files_map = context_files_map or {}
+        self._default_files = tuple(default_context_files or ["AGENTS.md", "TOOLS.md"])
+        self._context_files_map = {
+            k: tuple(v) for k, v in (context_files_map or {}).items()
+        }
         self._contexts: dict[tuple[str, ...], Context] = {}
-        self._active_files: tuple[str, ...] | None = None
         self._entry_counter: int = 0
 
     def _resolve_files(self, context_key: str | None) -> tuple[str, ...]:
         """Resolve context_key to the tuple of files to load."""
         if context_key and context_key in self._context_files_map:
-            return tuple(self._context_files_map[context_key])
-        return tuple(self._default_context_files)
+            return self._context_files_map[context_key]
+        return self._default_files
 
     @property
     def context(self) -> Context:
         """
-        Get the persistent LOOM Context for the active context key.
+        Get the persistent LOOM Context for the default context key.
 
         Returns:
-            The active Context instance.
+            The default Context instance.
         """
-        files = self._active_files or tuple(self._default_context_files)
-        return self._get_or_create_context(files)
+        return self._get_or_create_context(self._default_files)
 
     def _get_or_create_context(self, files: tuple[str, ...]) -> Context:
         """Get or create a Context for the given file list."""
@@ -285,8 +285,7 @@ class ContextBuilder:
             The persistent LOOM Context.
         """
         effective_key = context_key or channel
-        self._active_files = self._resolve_files(effective_key)
-        ctx = self.context
+        ctx = self._get_or_create_context(self._resolve_files(effective_key))
 
         # Update session info in topic section (remove old, add new)
         # This is the only thing that changes per-request

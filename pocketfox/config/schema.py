@@ -214,9 +214,9 @@ class Config(BaseSettings):
         Only includes entries that explicitly override the default.
         """
         result: dict[str, list[str]] = {}
-        for name in ("whatsapp", "telegram", "discord", "feishu", "dingtalk", "signal"):
+        for name in self.channels.model_fields:
             ch = getattr(self.channels, name)
-            if ch.context_files is not None:
+            if hasattr(ch, "context_files") and ch.context_files is not None:
                 result[name] = ch.context_files
         if self.agents.heartbeat.context_files is not None:
             result["heartbeat"] = self.agents.heartbeat.context_files
