@@ -56,6 +56,7 @@ class SubagentManager:
         label: str | None = None,
         origin_channel: str = "cli",
         origin_chat_id: str = "direct",
+        origin_context_name: str = "default",
     ) -> str:
         """
         Spawn a subagent to execute a task in the background.
@@ -65,6 +66,7 @@ class SubagentManager:
             label: Optional human-readable label for the task.
             origin_channel: The channel to announce results to.
             origin_chat_id: The chat ID to announce results to.
+            origin_context_name: The context name to route the announce through.
 
         Returns:
             Status message indicating the subagent was started.
@@ -73,6 +75,7 @@ class SubagentManager:
         display_label = label or task[:30] + ("..." if len(task) > 30 else "")
 
         origin = {
+            "context_name": origin_context_name,
             "channel": origin_channel,
             "chat_id": origin_chat_id,
         }
@@ -213,17 +216,18 @@ Summarize this naturally for the user. Keep it brief (1-2 sentences).\
  Do not mention technical details like "subagent" or task IDs."""
 
         # Inject as system message to trigger main agent
+        # Format: "context_name:channel:chat_id"
+        ctx_name = origin.get("context_name", "default")
+        route_key = f"{ctx_name}:{origin['channel']}:{origin['chat_id']}"
         msg = InboundMessage(
             channel="system",
             sender_id="subagent",
-            chat_id=f"{origin['channel']}:{origin['chat_id']}",
+            chat_id=route_key,
             content=announce_content,
         )
 
         await self.bus.publish_inbound(msg)
-        logger.debug(
-            f"Subagent [{task_id}] announced result to {origin['channel']}:{origin['chat_id']}"
-        )
+        logger.debug(f"Subagent [{task_id}] announced result to {route_key}")
 
     def _build_subagent_prompt(self, task: str) -> str:
         """Build a focused system prompt for the subagent."""

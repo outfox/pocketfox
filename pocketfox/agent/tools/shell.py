@@ -82,8 +82,7 @@ class ExecTool(Tool):
                 "working_dir": {
                     "type": "string",
                     "description": (
-                        "Optional working directory"
-                        " (relative to /workspace in sandbox mode)"
+                        "Optional working directory (relative to /workspace in sandbox mode)"
                     ),
                 },
             },

@@ -94,6 +94,7 @@ class CronService:
                                 deliver=j["payload"].get("deliver", False),
                                 channel=j["payload"].get("channel"),
                                 to=j["payload"].get("to"),
+                                context=j["payload"].get("context"),
                             ),
                             state=CronJobState(
                                 next_run_at_ms=j.get("state", {}).get("nextRunAtMs"),
@@ -142,6 +143,7 @@ class CronService:
                         "deliver": j.payload.deliver,
                         "channel": j.payload.channel,
                         "to": j.payload.to,
+                        "context": j.payload.context,
                     },
                     "state": {
                         "nextRunAtMs": j.state.next_run_at_ms,
@@ -281,6 +283,7 @@ class CronService:
         channel: str | None = None,
         to: str | None = None,
         delete_after_run: bool = False,
+        context: str | None = None,
     ) -> CronJob:
         """Add a new job."""
         store = self._load_store()
@@ -297,6 +300,7 @@ class CronService:
                 deliver=deliver,
                 channel=channel,
                 to=to,
+                context=context,
             ),
             state=CronJobState(next_run_at_ms=_compute_next_run(schedule, now)),
             created_at_ms=now,

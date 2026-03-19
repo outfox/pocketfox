@@ -330,12 +330,18 @@ def gateway(
 ):
     """Start the pocketfox gateway."""
     from pocketfox.agent.loop import AgentLoop
+    from pocketfox.agent.router import ContextRouter
+    from pocketfox.agent.task_context import TaskContext, current_task
     from pocketfox.bus.queue import MessageBus
     from pocketfox.channels.manager import ChannelManager
     from pocketfox.config.loader import load_config
     from pocketfox.cron.service import CronService
     from pocketfox.cron.types import CronJob
-    from pocketfox.heartbeat.service import HeartbeatService
+    from pocketfox.heartbeat.service import (
+        HEARTBEAT_OK_TOKEN,
+        HEARTBEAT_PROMPT,
+        _is_heartbeat_empty,
+    )
     from pocketfox.log import configure_logging
     from pocketfox.session.manager import SessionManager
     from pocketfox.utils.helpers import get_paths
@@ -349,15 +355,20 @@ def gateway(
     provider = _make_provider(config)
     session_manager = SessionManager(config.workspace_path)
 
+    # Build router from resolved contexts
+    resolved = config.resolve_contexts()
+    router = ContextRouter(resolved)
+
     # Create cron service first (callback set after agent creation)
     cron_store_path = get_paths().data / "cron" / "jobs.json"
     cron = CronService(cron_store_path)
 
-    # Create agent with cron service
+    # Create agent with router
     agent = AgentLoop(
         bus=bus,
         provider=provider,
         workspace=config.workspace_path,
+        router=router,
         model=config.agents.defaults.model,
         max_tokens=config.agents.defaults.max_tokens,
         max_iterations=config.agents.defaults.max_tool_iterations,
@@ -368,12 +379,10 @@ def gateway(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
         default_context_files=config.agents.defaults.context_files,
-        context_files_map=config.get_context_files_map(),
     )
 
-    # Set cron callback (needs agent)
+    # Set cron callback for dynamic cron jobs (needs agent)
     from pocketfox.bus.events import OutboundMessage
-    from pocketfox.heartbeat.service import HEARTBEAT_OK_TOKEN
 
     defaults = config.agents.defaults
 
@@ -391,43 +400,21 @@ def gateway(
             )
 
     async def on_cron_job(job: CronJob) -> str | None:
-        """Execute a cron job through the agent."""
+        """Execute a dynamic cron job through the agent."""
         eff_channel, eff_chat_id = _resolve_target(job.payload.channel, job.payload.to)
+        ctx_name = job.payload.context or "default"
         response = await agent.process_direct(
             job.payload.message,
             session_key=f"cron:{job.id}",
             channel=eff_channel,
             chat_id=eff_chat_id,
-            context_key="cron",
+            context_name=ctx_name,
         )
         if job.payload.deliver:
             await _deliver(eff_channel, eff_chat_id, response or "")
         return response
 
     cron.on_job = on_cron_job
-
-    # Create heartbeat service
-    async def on_heartbeat(prompt: str) -> str | None:
-        """Execute heartbeat through the agent."""
-        eff_channel, eff_chat_id = _resolve_target()
-        response = await agent.process_direct(
-            prompt,
-            session_key="heartbeat",
-            channel=eff_channel,
-            chat_id=eff_chat_id,
-            cache_ttl=3600,
-            context_key="heartbeat",
-        )
-        if HEARTBEAT_OK_TOKEN not in (response or ""):
-            await _deliver(eff_channel, eff_chat_id, response or "")
-        return response
-
-    heartbeat = HeartbeatService(
-        workspace=config.workspace_path,
-        on_heartbeat=on_heartbeat,
-        interval_s=30 * 60,  # 30 minutes
-        enabled=True,
-    )
 
     # Create channel manager
     channels = ChannelManager(config, bus, session_manager=session_manager)
@@ -441,7 +428,88 @@ def gateway(
     if cron_status["jobs"] > 0:
         console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
 
-    console.print("[green]✓[/green] Heartbeat: every 30m")
+    # Show per-context cron schedules
+    cron_contexts = router.get_cron_contexts()
+    for ctx_name, ctx_cfg in cron_contexts:
+        console.print(f"[green]✓[/green] Context cron [{ctx_name}]: {ctx_cfg.cron}")
+
+    async def _run_context_cron(ctx_name: str, ctx_cfg) -> None:
+        """Per-context cron loop — replaces HeartbeatService."""
+        import datetime  # noqa: I001
+        import os
+        from zoneinfo import ZoneInfo
+
+        from croniter import croniter
+
+        tz = ZoneInfo(os.environ.get("TZ", "UTC"))
+        workspace = config.workspace_path
+
+        while True:
+            try:
+                now = datetime.datetime.now(tz)
+                next_dt = croniter(ctx_cfg.cron, now).get_next(datetime.datetime)
+                delay = (next_dt - now).total_seconds()
+                await asyncio.sleep(delay)
+
+                # Check cron_files for content (heartbeat-like skip)
+                cron_files = ctx_cfg.cron_files
+                if cron_files:
+                    all_empty = True
+                    for fname in cron_files:
+                        fpath = workspace / fname
+                        if fpath.exists():
+                            content = fpath.read_text()
+                            if not _is_heartbeat_empty(content):
+                                all_empty = False
+                                break
+                    if all_empty:
+                        from loguru import logger as cron_logger
+
+                        cron_logger.debug(f"Context cron [{ctx_name}]: no tasks (files empty)")
+                        continue
+
+                # Build prompt
+                if cron_files:
+                    file_list = ", ".join(cron_files)
+                    prompt = (
+                        f"Read the following files in your workspace: {file_list}.\n"
+                        "Follow any instructions or tasks listed there.\n"
+                        f"If nothing needs attention, reply with just: {HEARTBEAT_OK_TOKEN}"
+                    )
+                else:
+                    prompt = HEARTBEAT_PROMPT
+
+                # Set task context for this cron turn
+                eff_channel = defaults.default_channel or "cli"
+                eff_chat_id = defaults.default_chat_id or "direct"
+                tc = TaskContext(context_name=ctx_name, channel=eff_channel, chat_id=eff_chat_id)
+                current_task.set(tc)
+
+                response = await agent.process_direct(
+                    prompt,
+                    session_key=f"cron_ctx:{ctx_name}",
+                    channel=eff_channel,
+                    chat_id=eff_chat_id,
+                    cache_ttl=3600,
+                    context_name=ctx_name,
+                )
+
+                # Deliver to outputs_always if not HEARTBEAT_OK
+                if HEARTBEAT_OK_TOKEN not in (response or ""):
+                    outputs = router.get_outputs(ctx_name, None, None)
+                    for ch, cid in outputs:
+                        await _deliver(ch, cid, response or "")
+                else:
+                    from loguru import logger as cron_logger
+
+                    cron_logger.info(f"Context cron [{ctx_name}]: OK (no action needed)")
+
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                from loguru import logger as cron_logger
+
+                cron_logger.error(f"Context cron [{ctx_name}] error: {e}")
 
     async def run():
         loop = asyncio.get_running_loop()
@@ -451,19 +519,24 @@ def gateway(
             console.print("\nShutting down...")
             shutdown_event.set()
 
-        # Handle both SIGTERM (Docker) and SIGINT (Ctrl+C)
-        # Windows does not support add_signal_handler (NotImplementedError)
         for sig in (signal.SIGTERM, signal.SIGINT):
             try:
                 loop.add_signal_handler(sig, _signal_handler)
             except NotImplementedError:
-                pass  # Windows — signal handling not supported in asyncio
+                pass
 
+        cron_tasks: list[asyncio.Task] = []
         try:
             await cron.start()
-            await heartbeat.start()
 
-            # Run until shutdown signal
+            # Start per-context cron tasks
+            for ctx_name, ctx_cfg in cron_contexts:
+                task = asyncio.create_task(
+                    _run_context_cron(ctx_name, ctx_cfg),
+                    name=f"cron:{ctx_name}",
+                )
+                cron_tasks.append(task)
+
             main_task = asyncio.gather(
                 agent.run(),
                 channels.start_all(),
@@ -475,7 +548,6 @@ def gateway(
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
-            # Surface exceptions from completed tasks before cancelling pending
             for task in done:
                 try:
                     task.result()
@@ -486,7 +558,6 @@ def gateway(
 
                     logger.exception("Task failed with exception")
 
-            # Cancel pending tasks
             for task in pending:
                 task.cancel()
                 try:
@@ -494,8 +565,12 @@ def gateway(
                 except asyncio.CancelledError:
                     pass
         finally:
-            # Cleanup
-            heartbeat.stop()
+            for task in cron_tasks:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
             cron.stop()
             agent.stop()
             await channels.stop_all()
@@ -512,9 +587,12 @@ def gateway(
 def agent(
     message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
     session_id: str = typer.Option("cli:default", "--session", "-s", help="Session ID"),
+    context: str = typer.Option(None, "--context", "-c", help="Context name to use"),
 ):
     """Interact with the agent directly."""
     from pocketfox.agent.loop import AgentLoop
+    from pocketfox.agent.router import ContextRouter
+    from pocketfox.agent.task_context import TaskContext, current_task
     from pocketfox.bus.queue import MessageBus
     from pocketfox.config.loader import load_config
     from pocketfox.log import configure_logging
@@ -526,6 +604,16 @@ def agent(
         configure_logging(log_file=get_paths().logs / "agent.log")
 
     config = load_config()
+    resolved = config.resolve_contexts()
+
+    # Resolve context name
+    ctx_name = context or next(iter(resolved), "default")
+    if ctx_name not in resolved:
+        console.print(f"[red]Error: context '{ctx_name}' not found[/red]")
+        console.print(f"Available: {', '.join(resolved.keys())}")
+        raise typer.Exit(1)
+
+    router = ContextRouter(resolved)
 
     bus = MessageBus()
     provider = _make_provider(config)
@@ -534,25 +622,27 @@ def agent(
         bus=bus,
         provider=provider,
         workspace=config.workspace_path,
+        router=router,
         brave_api_key=config.tools.web.search.api_key or None,
         exec_config=config.tools.exec,
         voice_config=config.tools.voice,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         default_context_files=config.agents.defaults.context_files,
-        context_files_map=config.get_context_files_map(),
     )
 
     if message:
         # Single message mode
         async def run_once():
-            response = await agent_loop.process_direct(message, session_id)
+            tc = TaskContext(context_name=ctx_name, channel="cli", chat_id="direct")
+            current_task.set(tc)
+            response = await agent_loop.process_direct(message, session_id, context_name=ctx_name)
             console.print(f"\n{__logo__} {response}")
 
         asyncio.run(run_once())
     else:
         # Interactive mode
         _enable_line_editing()
-        console.print(f"{__logo__} Interactive mode (Ctrl+C to exit)\n")
+        console.print(f"{__logo__} Interactive mode (context: {ctx_name}, Ctrl+C to exit)\n")
 
         # input() runs in a worker thread that can't be cancelled.
         # Without this handler, asyncio.run() would hang waiting for it.
@@ -572,7 +662,11 @@ def agent(
                     if not user_input.strip():
                         continue
 
-                    response = await agent_loop.process_direct(user_input, session_id)
+                    tc = TaskContext(context_name=ctx_name, channel="cli", chat_id="direct")
+                    current_task.set(tc)
+                    response = await agent_loop.process_direct(
+                        user_input, session_id, context_name=ctx_name
+                    )
                     console.print(f"\n{__logo__} {response}\n")
                 except KeyboardInterrupt:
                     _save_history()

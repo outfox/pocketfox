@@ -14,17 +14,8 @@ class MessageTool(Tool):
     def __init__(
         self,
         send_callback: Callable[[OutboundMessage], Awaitable[None]] | None = None,
-        default_channel: str = "",
-        default_chat_id: str = "",
     ):
         self._send_callback = send_callback
-        self._default_channel = default_channel
-        self._default_chat_id = default_chat_id
-
-    def set_context(self, channel: str, chat_id: str) -> None:
-        """Set the current message context."""
-        self._default_channel = channel
-        self._default_chat_id = chat_id
 
     def set_send_callback(self, callback: Callable[[OutboundMessage], Awaitable[None]]) -> None:
         """Set the callback for sending messages."""
@@ -53,8 +44,7 @@ class MessageTool(Tool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": (
-                        "Optional: list of file paths to send as media"
-                        " (images, audio, documents)"
+                        "Optional: list of file paths to send as media (images, audio, documents)"
                     ),
                 },
                 "voice": {
@@ -78,8 +68,11 @@ class MessageTool(Tool):
         voice: list[str] | None = None,
         **kwargs: Any,
     ) -> str:
-        channel = channel or self._default_channel
-        chat_id = chat_id or self._default_chat_id
+        from pocketfox.agent.task_context import current_task
+
+        tc = current_task.get()
+        channel = channel or (tc.channel if tc else "")
+        chat_id = chat_id or (tc.chat_id if tc else "")
 
         if not channel or not chat_id:
             return "Error: No target channel/chat specified"

@@ -44,8 +44,7 @@ class VoiceTool(Tool):
                 "text": {
                     "type": "string",
                     "description": (
-                        "Text to convert to speech."
-                        " Can include ElevenLabs v3 direction tags."
+                        "Text to convert to speech. Can include ElevenLabs v3 direction tags."
                     ),
                 },
                 "output_path": {
@@ -67,9 +66,7 @@ class VoiceTool(Tool):
                 "stability": {
                     "type": "number",
                     "description": (
-                        "Voice stability"
-                        " (0.0=creative, 0.5=natural, 1.0=robust)."
-                        " Default: 0.0"
+                        "Voice stability (0.0=creative, 0.5=natural, 1.0=robust). Default: 0.0"
                     ),
                     "minimum": 0.0,
                     "maximum": 1.0,
@@ -77,9 +74,7 @@ class VoiceTool(Tool):
                 "speed": {
                     "type": "number",
                     "description": (
-                        "Speech speed multiplier"
-                        " (0.7=slow, 1.0=normal, 1.2=fast)."
-                        " Default: 1.0"
+                        "Speech speed multiplier (0.7=slow, 1.0=normal, 1.2=fast). Default: 1.0"
                     ),
                     "minimum": 0.7,
                     "maximum": 1.2,

@@ -12,7 +12,6 @@ class WhatsAppConfig(BaseModel):
     enabled: bool = False
     bridge_url: str = "ws://localhost:3001"
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
-    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class TelegramConfig(BaseModel):
@@ -24,7 +23,6 @@ class TelegramConfig(BaseModel):
     proxy: str | None = (
         None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
     )
-    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class FeishuConfig(BaseModel):
@@ -36,7 +34,6 @@ class FeishuConfig(BaseModel):
     encrypt_key: str = ""  # Encrypt Key for event subscription (optional)
     verification_token: str = ""  # Verification Token for event subscription (optional)
     allow_from: list[str] = Field(default_factory=list)  # Allowed user open_ids
-    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class DingTalkConfig(BaseModel):
@@ -46,7 +43,6 @@ class DingTalkConfig(BaseModel):
     client_id: str = ""  # AppKey
     client_secret: str = ""  # AppSecret
     allow_from: list[str] = Field(default_factory=list)  # Allowed staff_ids
-    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class DiscordConfig(BaseModel):
@@ -57,7 +53,6 @@ class DiscordConfig(BaseModel):
     allow_from: list[str] = Field(default_factory=list)  # Allowed user IDs
     gateway_url: str = "wss://gateway.discord.gg/?v=10&encoding=json"
     intents: int = 37377  # GUILDS + GUILD_MESSAGES + DIRECT_MESSAGES + MESSAGE_CONTENT
-    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class SignalConfig(BaseModel):
@@ -71,7 +66,6 @@ class SignalConfig(BaseModel):
     api_url: str = "http://signal:8080"  # URL to signal-cli-rest-api
     phone_number: str = ""  # Registered phone number (e.g., "+491234567890")
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
-    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class ChannelsConfig(BaseModel):
@@ -100,18 +94,21 @@ class AgentDefaults(BaseModel):
     )  # Workspace files loaded into the system prompt
 
 
-class ContextOverride(BaseModel):
-    """Per-context system prompt override (heartbeat, cron, etc.)."""
-
-    context_files: list[str] | None = None  # None = inherit from defaults
-
-
 class AgentsConfig(BaseModel):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
-    heartbeat: ContextOverride = Field(default_factory=ContextOverride)
-    cron: ContextOverride = Field(default_factory=ContextOverride)
+
+
+class ContextConfig(BaseModel):
+    """A context defines an independent agent personality with routing rules."""
+
+    context_files: list[str] = Field(default_factory=lambda: ["AGENTS.md", "TOOLS.md"])
+    inputs: list[str] = Field(default_factory=list)
+    outputs_always: list[str] = Field(default_factory=list)
+    outputs_responsive: list[str] = Field(default_factory=list)
+    cron: str | None = None
+    cron_files: list[str] = Field(default_factory=list)
 
 
 class ProviderConfig(BaseModel):
@@ -197,6 +194,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    contexts: dict[str, ContextConfig] = Field(default_factory=dict)
 
     @property
     def workspace_path(self) -> Path:
@@ -208,21 +206,33 @@ class Config(BaseSettings):
             return Path(ws).expanduser()
         return get_paths().workspace
 
-    def get_context_files_map(self) -> dict[str, list[str]]:
-        """Build a map of context_key → context_files from channel and agent configs.
+    def resolve_contexts(self) -> dict[str, ContextConfig]:
+        """Return contexts, synthesizing a default if none are configured.
 
-        Only includes entries that explicitly override the default.
+        For backward compat: if no [contexts.*] sections exist, build a
+        "default" context from agents.defaults.context_files with all enabled
+        channels as wildcard inputs/outputs.
         """
-        result: dict[str, list[str]] = {}
+        if self.contexts:
+            return dict(self.contexts)
+
+        # Synthesize a default context from legacy config
+        enabled_channels: list[str] = []
         for name in self.channels.model_fields:
             ch = getattr(self.channels, name)
-            if hasattr(ch, "context_files") and ch.context_files is not None:
-                result[name] = ch.context_files
-        if self.agents.heartbeat.context_files is not None:
-            result["heartbeat"] = self.agents.heartbeat.context_files
-        if self.agents.cron.context_files is not None:
-            result["cron"] = self.agents.cron.context_files
-        return result
+            if getattr(ch, "enabled", False):
+                enabled_channels.append(name)
+
+        wildcards = [f"{ch}:*" for ch in enabled_channels]
+        defaults = self.agents.defaults
+
+        return {
+            "default": ContextConfig(
+                context_files=list(defaults.context_files),
+                inputs=list(wildcards),
+                outputs_responsive=list(wildcards),
+            )
+        }
 
     def _match_provider(
         self, model: str | None = None

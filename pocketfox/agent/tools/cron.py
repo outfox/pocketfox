@@ -12,13 +12,6 @@ class CronTool(Tool):
 
     def __init__(self, cron_service: CronService):
         self._cron = cron_service
-        self._channel = ""
-        self._chat_id = ""
-
-    def set_context(self, channel: str, chat_id: str) -> None:
-        """Set the current session context for delivery."""
-        self._channel = channel
-        self._chat_id = chat_id
 
     @property
     def name(self) -> str:
@@ -70,9 +63,15 @@ class CronTool(Tool):
         return f"Unknown action: {action}"
 
     def _add_job(self, message: str, every_seconds: int | None, cron_expr: str | None) -> str:
+        from pocketfox.agent.task_context import current_task
+
         if not message:
             return "Error: message is required for add"
-        if not self._channel or not self._chat_id:
+
+        tc = current_task.get()
+        channel = tc.channel if tc else ""
+        chat_id = tc.chat_id if tc else ""
+        if not channel or not chat_id:
             return "Error: no session context (channel/chat_id)"
 
         # Build schedule
@@ -88,8 +87,9 @@ class CronTool(Tool):
             schedule=schedule,
             message=message,
             deliver=True,
-            channel=self._channel,
-            to=self._chat_id,
+            channel=channel,
+            to=chat_id,
+            context=tc.context_name if tc else None,
         )
         return f"Created job '{job.name}' (id: {job.id})"
 

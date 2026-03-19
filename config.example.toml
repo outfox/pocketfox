@@ -15,14 +15,7 @@ api_key = "${GROQ_API_KEY}"
 
 [agents.defaults]
 model = "openrouter/anthropic/claude-sonnet-4-5"
-# context_files = ["AGENTS.md", "TOOLS.md"]  # Workspace files loaded into system prompt
-
-# Per-context overrides for heartbeat and cron (context_files = None inherits from defaults)
-# [agents.heartbeat]
-# context_files = ["AGENTS.md"]
-#
-# [agents.cron]
-# context_files = ["AGENTS.md", "TOOLS.md"]
+# context_files = ["AGENTS.md", "TOOLS.md"]  # Default files for synthesized context
 
 [tools]
 restrict_to_workspace = true
@@ -30,14 +23,32 @@ restrict_to_workspace = true
 [tools.web.search]
 api_key = "${BRAVE_API_KEY}"
 
+# Channels: connection + security only
 [channels.telegram]
 enabled = true
 token = "${TELEGRAM_BOT_TOKEN}"
-allow_from = ["${TELEGRAM_ALLOW_FROM}"] # Telegram IDs
-# context_files = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "MEMORY.md"]  # Override defaults
+allow_from = ["${TELEGRAM_ALLOW_FROM}"]
 
 [channels.signal]
 enabled = true
 api_url = "${SIGNAL_CLI_URL}"
 phone_number = "${SIGNAL_PHONE_NUMBER}"
-allow_from = ["${SIGNAL_ALLOW_FROM}"] # Phone Numbers
+allow_from = ["${SIGNAL_ALLOW_FROM}"]
+
+# Contexts: the primary routing unit
+# If no [contexts.*] sections exist, a "default" context is auto-synthesized
+# from agents.defaults.context_files + all enabled channels as wildcard I/O.
+
+# [contexts.main]
+# context_files = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "MEMORY.md"]
+# inputs = ["telegram:*", "discord:*"]
+# outputs_responsive = ["telegram:*", "discord:*"]
+# cron = "*/30 * * * *"
+# cron_files = ["HEARTBEAT.md"]
+
+# [contexts.monitoring]
+# context_files = ["AGENTS.md", "TOOLS.md"]
+# inputs = []
+# outputs_always = ["telegram:123456"]
+# cron = "0 9 * * *"
+# cron_files = ["DAILY_CHECK.md"]

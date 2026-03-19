@@ -29,6 +29,7 @@ class CronPayload:
     deliver: bool = False
     channel: str | None = None  # e.g. "whatsapp"
     to: str | None = None  # e.g. phone number
+    context: str | None = None  # context name for routing
 
 
 @dataclass

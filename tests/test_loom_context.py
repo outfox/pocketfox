@@ -60,7 +60,10 @@ def test_build_context_render(workspace):
         workspace,
         default_context_files=["AGENTS.md", "SOUL.md", "USER.md", "MEMORY.md"],
     )
-    ctx = builder.build_context(channel="telegram", chat_id="42")
+    ctx = builder.build_context(
+        channel="telegram", chat_id="42",
+        context_files=("AGENTS.md", "SOUL.md", "USER.md", "MEMORY.md"),
+    )
 
     rendered = ctx.render()
 

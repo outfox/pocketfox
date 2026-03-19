@@ -18,13 +18,6 @@ class SpawnTool(Tool):
 
     def __init__(self, manager: "SubagentManager"):
         self._manager = manager
-        self._origin_channel = "cli"
-        self._origin_chat_id = "direct"
-
-    def set_context(self, channel: str, chat_id: str) -> None:
-        """Set the origin context for subagent announcements."""
-        self._origin_channel = channel
-        self._origin_chat_id = chat_id
 
     @property
     def name(self) -> str:
@@ -57,9 +50,13 @@ class SpawnTool(Tool):
 
     async def execute(self, task: str, label: str | None = None, **kwargs: Any) -> str:
         """Spawn a subagent to execute the given task."""
+        from pocketfox.agent.task_context import current_task
+
+        tc = current_task.get()
         return await self._manager.spawn(
             task=task,
             label=label,
-            origin_channel=self._origin_channel,
-            origin_chat_id=self._origin_chat_id,
+            origin_channel=tc.channel if tc else "cli",
+            origin_chat_id=tc.chat_id if tc else "direct",
+            origin_context_name=tc.context_name if tc else "default",
         )
