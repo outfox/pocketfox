@@ -54,39 +54,51 @@ class ContextBuilder:
     dynamically modify the context at runtime.
     """
 
-    BOOTSTRAP_FILES: ClassVar[list[str]] = [
-        "AGENTS.md",
-        "SOUL.md",
-        "USER.md",
-        "TOOLS.md",
-        "IDENTITY.md",
-        "SECRETS.md",
-    ]
+    MEMORY_FILENAME: ClassVar[str] = "MEMORY.md"
 
-    def __init__(self, workspace: Path):
+    def __init__(
+        self,
+        workspace: Path,
+        default_context_files: list[str] | None = None,
+        context_files_map: dict[str, list[str]] | None = None,
+    ):
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
         self.skills = SkillsLoader(workspace)
-        self._context: Context | None = None
+        self._default_context_files = default_context_files or ["AGENTS.md", "TOOLS.md"]
+        self._context_files_map = context_files_map or {}
+        self._contexts: dict[tuple[str, ...], Context] = {}
+        self._active_files: tuple[str, ...] | None = None
         self._entry_counter: int = 0
+
+    def _resolve_files(self, context_key: str | None) -> tuple[str, ...]:
+        """Resolve context_key to the tuple of files to load."""
+        if context_key and context_key in self._context_files_map:
+            return tuple(self._context_files_map[context_key])
+        return tuple(self._default_context_files)
 
     @property
     def context(self) -> Context:
         """
-        Get the persistent LOOM Context, creating it if needed.
+        Get the persistent LOOM Context for the active context key.
 
         Returns:
-            The persistent Context instance.
+            The active Context instance.
         """
-        if self._context is None:
-            self._context = self._create_context()
-        return self._context
+        files = self._active_files or tuple(self._default_context_files)
+        return self._get_or_create_context(files)
 
-    def _create_context(self) -> Context:
-        """Create a new LOOM Context with all static sections populated."""
+    def _get_or_create_context(self, files: tuple[str, ...]) -> Context:
+        """Get or create a Context for the given file list."""
+        if files not in self._contexts:
+            self._contexts[files] = self._create_context(list(files))
+        return self._contexts[files]
+
+    def _create_context(self, context_files: list[str]) -> Context:
+        """Create a new LOOM Context with sections populated from the given file list."""
         ctx = Context("agent")
 
-        # Foundation: Core identity + bootstrap files + long-term memory
+        # Foundation: Core identity (always) + configured files
         ctx.foundation.add(
             StringEntry(
                 self._get_identity(),
@@ -94,17 +106,20 @@ class ContextBuilder:
             )
         )
 
-        for filename in self.BOOTSTRAP_FILES:
+        include_memory = False
+        for filename in context_files:
+            if filename == self.MEMORY_FILENAME:
+                include_memory = True
+                if self.memory.memory_file.exists():
+                    ctx.foundation.add(
+                        KeptFileEntry(path=self.memory.memory_file, name="Long-term Memory")
+                    )
+                continue
             file_path = self.workspace / filename
             if file_path.exists():
                 ctx.foundation.add(KeptFileEntry(path=file_path, name=filename))
 
-        if self.memory.memory_file.exists():
-            ctx.foundation.add(
-                KeptFileEntry(path=self.memory.memory_file, name="Long-term Memory")
-            )
-
-        # Focus: Skills
+        # Focus: Skills (always loaded)
         always_skills = self.skills.get_always_skills()
         if always_skills:
             always_content = self.skills.load_skills_for_context(always_skills)
@@ -131,10 +146,11 @@ class ContextBuilder:
                 )
             )
 
-        # Topic: Session-specific memory (daily notes)
-        today_file = self.memory.get_today_file()
-        if today_file.exists():
-            ctx.topic.add(KeptFileEntry(path=today_file, name="Today's Notes"))
+        # Topic: Daily notes (only if MEMORY.md is in context_files)
+        if include_memory:
+            today_file = self.memory.get_today_file()
+            if today_file.exists():
+                ctx.topic.add(KeptFileEntry(path=today_file, name="Today's Notes"))
 
         # Attention: Volatile data (current time)
         ctx.attention.add(DateTimeEntry(name="Current Time"))
@@ -201,19 +217,19 @@ class ContextBuilder:
         return False
 
     def clear_kept_entries(self) -> int:
-        """Remove all kept entries (images, files) from the persistent context.
+        """Remove all kept entries (images, files) from all persistent contexts.
 
         Returns:
             Number of entries removed.
         """
-        ctx = self.context
         removed = 0
         kept_types = (ImageEntry, KeptFileEntry)
-        for section_name in ("foundation", "focus", "topic", "step", "attention"):
-            section = getattr(ctx, section_name)
-            before = len(section.entries)
-            section.entries = [e for e in section.entries if not isinstance(e, kept_types)]
-            removed += before - len(section.entries)
+        for ctx in self._contexts.values():
+            for section_name in ("foundation", "focus", "topic", "step", "attention"):
+                section = getattr(ctx, section_name)
+                before = len(section.entries)
+                section.entries = [e for e in section.entries if not isinstance(e, kept_types)]
+                removed += before - len(section.entries)
         if removed:
             logger.info(f"Cleared {removed} kept entry/entries from context")
         return removed
@@ -254,6 +270,7 @@ class ContextBuilder:
         self,
         channel: str | None = None,
         chat_id: str | None = None,
+        context_key: str | None = None,
     ) -> Context:
         """
         Get the persistent LOOM Context, updating session info if provided.
@@ -261,10 +278,14 @@ class ContextBuilder:
         Args:
             channel: Current channel (telegram, feishu, etc.).
             chat_id: Current chat/user ID.
+            context_key: Selects which context_files config to use.
+                Falls back to channel name, then default.
 
         Returns:
             The persistent LOOM Context.
         """
+        effective_key = context_key or channel
+        self._active_files = self._resolve_files(effective_key)
         ctx = self.context
 
         # Update session info in topic section (remove old, add new)
@@ -290,6 +311,7 @@ class ContextBuilder:
         skill_names: list[str] | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
+        context_key: str | None = None,
     ) -> str:
         """
         Build the system prompt from LOOM context.
@@ -298,11 +320,12 @@ class ContextBuilder:
             skill_names: Optional list of skills to include (unused, for API compat).
             channel: Current channel.
             chat_id: Current chat/user ID.
+            context_key: Selects which context_files config to use.
 
         Returns:
             Complete system prompt as string.
         """
-        ctx = self.build_context(channel=channel, chat_id=chat_id)
+        ctx = self.build_context(channel=channel, chat_id=chat_id, context_key=context_key)
         return ctx.render()
 
     def _get_identity(self) -> str:
@@ -352,6 +375,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         channel: str | None = None,
         chat_id: str | None = None,
         cache_ttl: int | None = None,
+        context_key: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Build the complete message list for an LLM call.
@@ -373,7 +397,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         Returns:
             List of messages including system prompt.
         """
-        ctx = self.build_context(channel=channel, chat_id=chat_id)
+        ctx = self.build_context(channel=channel, chat_id=chat_id, context_key=context_key)
 
         # System prompt: foundation, focus, topic only (stable parts)
         # Cache breakpoint after topic - this caches the entire system prompt

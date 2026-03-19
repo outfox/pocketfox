@@ -56,11 +56,14 @@ def test_build_context_has_sections(workspace):
 
 def test_build_context_render(workspace):
     """Context renders to string."""
-    builder = ContextBuilder(workspace)
+    builder = ContextBuilder(
+        workspace,
+        default_context_files=["AGENTS.md", "SOUL.md", "USER.md", "MEMORY.md"],
+    )
     ctx = builder.build_context(channel="telegram", chat_id="42")
-    
+
     rendered = ctx.render()
-    
+
     assert "pocketfox" in rendered
     assert "AGENTS.md" in rendered
     assert "SOUL.md" in rendered

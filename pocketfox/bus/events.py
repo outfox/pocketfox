@@ -17,6 +17,7 @@ class InboundMessage:
     media: list[str] = field(default_factory=list)  # Media URLs
     metadata: dict[str, Any] = field(default_factory=dict)  # Channel-specific data
     cache_ttl: int | None = None  # Anthropic prompt cache TTL in seconds
+    context_key: str | None = None  # Selects which context_files config to use
 
     @property
     def session_key(self) -> str:

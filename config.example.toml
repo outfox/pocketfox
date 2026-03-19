@@ -15,6 +15,14 @@ api_key = "${GROQ_API_KEY}"
 
 [agents.defaults]
 model = "openrouter/anthropic/claude-sonnet-4-5"
+# context_files = ["AGENTS.md", "TOOLS.md"]  # Workspace files loaded into system prompt
+
+# Per-context overrides for heartbeat and cron (context_files = None inherits from defaults)
+# [agents.heartbeat]
+# context_files = ["AGENTS.md"]
+#
+# [agents.cron]
+# context_files = ["AGENTS.md", "TOOLS.md"]
 
 [tools]
 restrict_to_workspace = true
@@ -26,6 +34,7 @@ api_key = "${BRAVE_API_KEY}"
 enabled = true
 token = "${TELEGRAM_BOT_TOKEN}"
 allow_from = ["${TELEGRAM_ALLOW_FROM}"] # Telegram IDs
+# context_files = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "MEMORY.md"]  # Override defaults
 
 [channels.signal]
 enabled = true

@@ -61,6 +61,8 @@ class AgentLoop:
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
+        default_context_files: list[str] | None = None,
+        context_files_map: dict[str, list[str]] | None = None,
     ):
         self.bus = bus
         self.provider = provider
@@ -74,7 +76,11 @@ class AgentLoop:
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
-        self.context = ContextBuilder(workspace)
+        self.context = ContextBuilder(
+            workspace,
+            default_context_files=default_context_files,
+            context_files_map=context_files_map,
+        )
         self.sessions = session_manager or SessionManager(workspace)
         self.sessions.on_session_reset = self.context.clear_kept_images
         self.tools = ToolRegistry()
@@ -222,6 +228,7 @@ class AgentLoop:
             channel=msg.channel,
             chat_id=msg.chat_id,
             cache_ttl=msg.cache_ttl,
+            context_key=msg.context_key,
         )
 
         # Agent loop
@@ -457,6 +464,7 @@ class AgentLoop:
         channel: str = "cli",
         chat_id: str = "direct",
         cache_ttl: int | None = None,
+        context_key: str | None = None,
     ) -> str:
         """
         Process a message directly (for CLI or cron usage).
@@ -467,13 +475,14 @@ class AgentLoop:
             channel: Source channel (for context).
             chat_id: Source chat ID (for context).
             cache_ttl: Optional Anthropic prompt cache TTL in seconds.
+            context_key: Selects which context_files config to use.
 
         Returns:
             The agent's response.
         """
         msg = InboundMessage(
             channel=channel, sender_id="user", chat_id=chat_id, content=content,
-            cache_ttl=cache_ttl,
+            cache_ttl=cache_ttl, context_key=context_key,
         )
 
         response = await self._process_message(msg)

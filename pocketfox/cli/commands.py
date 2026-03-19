@@ -367,6 +367,8 @@ def gateway(
         cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
+        default_context_files=config.agents.defaults.context_files,
+        context_files_map=config.get_context_files_map(),
     )
 
     # Set cron callback (needs agent)
@@ -396,6 +398,7 @@ def gateway(
             session_key=f"cron:{job.id}",
             channel=eff_channel,
             chat_id=eff_chat_id,
+            context_key="cron",
         )
         if job.payload.deliver:
             await _deliver(eff_channel, eff_chat_id, response or "")
@@ -413,6 +416,7 @@ def gateway(
             channel=eff_channel,
             chat_id=eff_chat_id,
             cache_ttl=3600,
+            context_key="heartbeat",
         )
         if HEARTBEAT_OK_TOKEN not in (response or ""):
             await _deliver(eff_channel, eff_chat_id, response or "")
@@ -527,6 +531,8 @@ def agent(
         exec_config=config.tools.exec,
         voice_config=config.tools.voice,
         restrict_to_workspace=config.tools.restrict_to_workspace,
+        default_context_files=config.agents.defaults.context_files,
+        context_files_map=config.get_context_files_map(),
     )
 
     if message:

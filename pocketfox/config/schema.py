@@ -12,6 +12,7 @@ class WhatsAppConfig(BaseModel):
     enabled: bool = False
     bridge_url: str = "ws://localhost:3001"
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
+    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class TelegramConfig(BaseModel):
@@ -23,6 +24,7 @@ class TelegramConfig(BaseModel):
     proxy: str | None = (
         None  # HTTP/SOCKS5 proxy URL, e.g. "http://127.0.0.1:7890" or "socks5://127.0.0.1:1080"
     )
+    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class FeishuConfig(BaseModel):
@@ -34,6 +36,7 @@ class FeishuConfig(BaseModel):
     encrypt_key: str = ""  # Encrypt Key for event subscription (optional)
     verification_token: str = ""  # Verification Token for event subscription (optional)
     allow_from: list[str] = Field(default_factory=list)  # Allowed user open_ids
+    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class DingTalkConfig(BaseModel):
@@ -43,6 +46,7 @@ class DingTalkConfig(BaseModel):
     client_id: str = ""  # AppKey
     client_secret: str = ""  # AppSecret
     allow_from: list[str] = Field(default_factory=list)  # Allowed staff_ids
+    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class DiscordConfig(BaseModel):
@@ -53,6 +57,7 @@ class DiscordConfig(BaseModel):
     allow_from: list[str] = Field(default_factory=list)  # Allowed user IDs
     gateway_url: str = "wss://gateway.discord.gg/?v=10&encoding=json"
     intents: int = 37377  # GUILDS + GUILD_MESSAGES + DIRECT_MESSAGES + MESSAGE_CONTENT
+    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class SignalConfig(BaseModel):
@@ -66,6 +71,7 @@ class SignalConfig(BaseModel):
     api_url: str = "http://signal:8080"  # URL to signal-cli-rest-api
     phone_number: str = ""  # Registered phone number (e.g., "+491234567890")
     allow_from: list[str] = Field(default_factory=list)  # Allowed phone numbers
+    context_files: list[str] | None = None  # Override default bootstrap files (None = inherit)
 
 
 class ChannelsConfig(BaseModel):
@@ -89,12 +95,23 @@ class AgentDefaults(BaseModel):
     max_tool_iterations: int = 20
     default_channel: str = ""  # Fallback channel for cron/heartbeat (e.g. "telegram")
     default_chat_id: str = ""  # Fallback chat ID for cron/heartbeat
+    context_files: list[str] = Field(
+        default_factory=lambda: ["AGENTS.md", "TOOLS.md"]
+    )  # Workspace files loaded into the system prompt
+
+
+class ContextOverride(BaseModel):
+    """Per-context system prompt override (heartbeat, cron, etc.)."""
+
+    context_files: list[str] | None = None  # None = inherit from defaults
 
 
 class AgentsConfig(BaseModel):
     """Agent configuration."""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
+    heartbeat: ContextOverride = Field(default_factory=ContextOverride)
+    cron: ContextOverride = Field(default_factory=ContextOverride)
 
 
 class ProviderConfig(BaseModel):
@@ -190,6 +207,22 @@ class Config(BaseSettings):
         if ws:
             return Path(ws).expanduser()
         return get_paths().workspace
+
+    def get_context_files_map(self) -> dict[str, list[str]]:
+        """Build a map of context_key → context_files from channel and agent configs.
+
+        Only includes entries that explicitly override the default.
+        """
+        result: dict[str, list[str]] = {}
+        for name in ("whatsapp", "telegram", "discord", "feishu", "dingtalk", "signal"):
+            ch = getattr(self.channels, name)
+            if ch.context_files is not None:
+                result[name] = ch.context_files
+        if self.agents.heartbeat.context_files is not None:
+            result["heartbeat"] = self.agents.heartbeat.context_files
+        if self.agents.cron.context_files is not None:
+            result["cron"] = self.agents.cron.context_files
+        return result
 
     def _match_provider(
         self, model: str | None = None
