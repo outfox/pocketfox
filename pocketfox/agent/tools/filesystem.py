@@ -68,9 +68,9 @@ class ReadFileTool(Tool):
             content = file_path.read_text(encoding="utf-8")
 
             if keep and self._context_builder:
-                from pocketfox.agent.entries import KeptFileEntry
+                from loom import FileEntry
 
-                entry = KeptFileEntry(path=file_path)
+                entry = FileEntry(path=file_path)
                 self._context_builder.add_entry("focus", entry)
                 return f"{content}\n\n(keeping {file_path.name} in context)"
 

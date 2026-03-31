@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from loguru import logger
-from loom import Context, Entry, StringEntry
+from loom import Context, Entry, FileEntry, StringEntry
 
-from pocketfox.agent.entries import DateTimeEntry, ImageEntry, KeptFileEntry
+from pocketfox.agent.entries import DateTimeEntry, ImageEntry
 from pocketfox.agent.memory import MemoryStore
 from pocketfox.agent.skills import SkillsLoader
 
@@ -103,12 +103,12 @@ class ContextBuilder:
                 include_memory = True
                 if self.memory.memory_file.exists():
                     ctx.foundation.add(
-                        KeptFileEntry(path=self.memory.memory_file, name="Long-term Memory")
+                        FileEntry(path=self.memory.memory_file, name="Long-term Memory")
                     )
                 continue
             file_path = self.workspace / filename
             if file_path.exists():
-                ctx.foundation.add(KeptFileEntry(path=file_path, name=filename))
+                ctx.foundation.add(FileEntry(path=file_path, name=filename))
 
         # Focus: Skills (always loaded)
         always_skills = self.skills.get_always_skills()
@@ -141,7 +141,7 @@ class ContextBuilder:
         if include_memory:
             today_file = self.memory.get_today_file()
             if today_file.exists():
-                ctx.topic.add(KeptFileEntry(path=today_file, name="Today's Notes"))
+                ctx.topic.add(FileEntry(path=today_file, name="Today's Notes"))
 
         # Attention: Volatile data (current time)
         ctx.attention.add(DateTimeEntry(name="Current Time"))
@@ -214,7 +214,7 @@ class ContextBuilder:
             Number of entries removed.
         """
         removed = 0
-        kept_types = (ImageEntry, KeptFileEntry)
+        kept_types = (ImageEntry, FileEntry)
         for ctx in self._contexts.values():
             for section_name in ("foundation", "focus", "topic", "step", "attention"):
                 section = getattr(ctx, section_name)

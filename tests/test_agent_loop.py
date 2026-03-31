@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from pocketfox.agent.context import ContextBuilder
-from pocketfox.agent.entries import ImageEntry, KeptFileEntry
+from loom import FileEntry
+
+from pocketfox.agent.entries import ImageEntry
 from pocketfox.bus.events import InboundMessage
 from pocketfox.bus.queue import MessageBus
 from pocketfox.providers.base import LLMResponse, ToolCallRequest
@@ -470,12 +472,12 @@ class TestReadFileKeep:
 
         assert "My notes" in result
         assert "keeping" not in result
-        kept = [e for e in builder.context.focus.entries if isinstance(e, KeptFileEntry)]
+        kept = [e for e in builder.context.focus.entries if isinstance(e, FileEntry)]
         assert len(kept) == 0
 
     @pytest.mark.asyncio
     async def test_keep_true_persists_in_focus(self, tmp_path):
-        """keep=True adds a KeptFileEntry to the focus section."""
+        """keep=True adds a FileEntry to the focus section."""
         from pocketfox.agent.tools.filesystem import ReadFileTool
 
         doc = tmp_path / "SKILL.md"
@@ -486,7 +488,7 @@ class TestReadFileKeep:
         result = await tool.execute(path=str(doc), keep=True)
 
         assert "keeping" in result.lower()
-        kept = [e for e in builder.context.focus.entries if isinstance(e, KeptFileEntry)]
+        kept = [e for e in builder.context.focus.entries if isinstance(e, FileEntry)]
         assert len(kept) == 1
         assert "Do the thing." in kept[0].compile()
 
@@ -538,7 +540,7 @@ class TestReadFileKeep:
         await tool.execute(path=str(doc), keep=True)
         await tool.execute(path=str(doc), keep=True)
 
-        kept = [e for e in builder.context.focus.entries if isinstance(e, KeptFileEntry)]
+        kept = [e for e in builder.context.focus.entries if isinstance(e, FileEntry)]
         # LOOM deduplicates by identity — same resolved path means same entry
         assert len(kept) <= 2  # at most 2 (add_entry doesn't dedupe, but identity() enables it)
 
@@ -552,6 +554,7 @@ class TestClearKeptEntries:
     """Tests for ContextBuilder.clear_kept_entries() covering both types."""
 
     def test_clears_files_and_images(self, tmp_path):
+        (tmp_path / "ref.md").write_text("content", encoding="utf-8")
         builder = ContextBuilder(tmp_path)
         builder.add_entry(
             "topic",
@@ -559,7 +562,7 @@ class TestClearKeptEntries:
         )
         builder.add_entry(
             "focus",
-            KeptFileEntry(path=tmp_path / "ref.md"),
+            FileEntry(path=tmp_path / "ref.md"),
         )
 
         removed = builder.clear_kept_entries()
@@ -567,10 +570,11 @@ class TestClearKeptEntries:
 
     def test_alias_clear_kept_images_still_works(self, tmp_path):
         """Backward-compatible alias should clear both types."""
+        (tmp_path / "ref.md").write_text("content", encoding="utf-8")
         builder = ContextBuilder(tmp_path)
         builder.add_entry(
             "focus",
-            KeptFileEntry(path=tmp_path / "ref.md"),
+            FileEntry(path=tmp_path / "ref.md"),
         )
         removed = builder.clear_kept_images()
         assert removed == 1
@@ -590,19 +594,19 @@ class TestClearKeptEntries:
 
 
 # ---------------------------------------------------------------------------
-# KeptFileEntry live-reload and deletion
+# FileEntry (loom) live-reload and deletion
 # ---------------------------------------------------------------------------
 
 
-class TestKeptFileEntryLiveReload:
-    """Verify KeptFileEntry re-reads from disk and handles deletion."""
+class TestFileEntryLiveReload:
+    """Verify loom FileEntry re-reads from disk and handles deletion."""
 
     def test_compile_reads_current_content(self, tmp_path):
         """compile() should return the file's current content, not stale data."""
         doc = tmp_path / "live.md"
         doc.write_text("version 1", encoding="utf-8")
 
-        entry = KeptFileEntry(path=doc)
+        entry = FileEntry(path=doc)
         assert "version 1" in entry.compile()
 
         doc.write_text("version 2", encoding="utf-8")
@@ -614,7 +618,7 @@ class TestKeptFileEntryLiveReload:
         doc = tmp_path / "ephemeral.md"
         doc.write_text("exists", encoding="utf-8")
 
-        entry = KeptFileEntry(path=doc)
+        entry = FileEntry(path=doc)
         assert "exists" in entry.compile()
 
         doc.unlink()
@@ -628,7 +632,7 @@ class TestKeptFileEntryLiveReload:
         doc.write_text("content", encoding="utf-8")
 
         builder = ContextBuilder(tmp_path)
-        builder.add_entry("focus", KeptFileEntry(path=doc))
+        builder.add_entry("focus", FileEntry(path=doc))
 
         doc.unlink()
 

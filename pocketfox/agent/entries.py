@@ -37,39 +37,6 @@ class DateTimeEntry(Entry):
         return f"DateTimeEntry(fmt={self._fmt!r})"
 
 
-class KeptFileEntry(Entry):
-    """A text file entry kept in context across turns.
-
-    Re-reads the file from disk on every compile() so edits are reflected
-    immediately (the resulting cache miss is intentional).  If the file is
-    deleted, compile() returns a short notice instead of failing.
-    """
-
-    def __init__(
-        self,
-        path: Path,
-        name: str | None = None,
-    ):
-        super().__init__(name or f"Kept: {path.name}")
-        self._path = path
-        self._resolved = str(path.resolve())
-
-    def compile(self) -> str:
-        try:
-            content = self._path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            return f"[Kept file removed: {self._path.name}]"
-        except OSError as e:
-            return f"[Kept file unreadable: {self._path.name} ({e})]"
-        return f"# {self._path.name}\n\n{content}"
-
-    def identity(self) -> str:
-        return f"file:{self._resolved}"
-
-    def __repr__(self) -> str:
-        return f"KeptFileEntry(path={self._path!r})"
-
-
 class ImageEntry(Entry):
     """An entry backed by an image, supporting multimodal compilation."""
 
