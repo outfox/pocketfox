@@ -592,6 +592,31 @@ class TestClearKeptEntries:
         assert removed == 1
         assert len(builder.context.topic.entries) == before - 1
 
+    def test_preserves_bootstrap_file_entries(self, tmp_path):
+        """Bootstrap FileEntries (not added via add_entry) must survive clearing."""
+        (tmp_path / "AGENTS.md").write_text("bootstrap", encoding="utf-8")
+        builder = ContextBuilder(tmp_path, default_context_files=["AGENTS.md"])
+
+        # Force context creation so foundation gets populated
+        _ = builder.context
+        bootstrap_before = [
+            e for e in builder.context.foundation.entries if isinstance(e, FileEntry)
+        ]
+        assert len(bootstrap_before) == 1
+
+        # Add a runtime-kept file via add_entry
+        (tmp_path / "ref.md").write_text("kept", encoding="utf-8")
+        builder.add_entry("focus", FileEntry(path=tmp_path / "ref.md"))
+
+        removed = builder.clear_kept_entries()
+        assert removed == 1  # Only the runtime-kept entry
+
+        # Bootstrap entry still there
+        bootstrap_after = [
+            e for e in builder.context.foundation.entries if isinstance(e, FileEntry)
+        ]
+        assert len(bootstrap_after) == 1
+
 
 # ---------------------------------------------------------------------------
 # FileEntry (loom) live-reload and deletion

@@ -214,12 +214,21 @@ class ContextBuilder:
             Number of entries removed.
         """
         removed = 0
-        kept_types = (ImageEntry, FileEntry)
         for ctx in self._contexts.values():
             for section_name in ("foundation", "focus", "topic", "step", "attention"):
                 section = getattr(ctx, section_name)
                 before = len(section.entries)
-                section.entries = [e for e in section.entries if not isinstance(e, kept_types)]
+                section.entries = [
+                    e
+                    for e in section.entries
+                    if not (
+                        isinstance(e, ImageEntry)
+                        or (
+                            isinstance(e, FileEntry)
+                            and getattr(e, "_runtime_id", None) is not None
+                        )
+                    )
+                ]
                 removed += before - len(section.entries)
         if removed:
             logger.info(f"Cleared {removed} kept entry/entries from context")
