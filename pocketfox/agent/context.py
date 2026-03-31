@@ -211,22 +211,23 @@ class ContextBuilder:
             Number of entries removed.
         """
         removed = 0
+        removed_ids: set[str] = set()
         for ctx in self._contexts.values():
             for section_name in ("foundation", "focus", "topic", "step", "attention"):
                 section = getattr(ctx, section_name)
-                before = len(section.entries)
-                section.entries = [
-                    e
-                    for e in section.entries
-                    if not (
-                        isinstance(e, ImageEntry)
-                        or (
-                            isinstance(e, FileEntry)
-                            and e.id in self._runtime_entry_ids
-                        )
+                kept, cleared = [], []
+                for e in section.entries:
+                    is_runtime_file = (
+                        isinstance(e, FileEntry) and e.id in self._runtime_entry_ids
                     )
-                ]
-                removed += before - len(section.entries)
+                    if isinstance(e, ImageEntry) or is_runtime_file:
+                        cleared.append(e)
+                    else:
+                        kept.append(e)
+                section.entries = kept
+                removed += len(cleared)
+                removed_ids.update(e.id for e in cleared if e.id)
+        self._runtime_entry_ids -= removed_ids
         if removed:
             logger.info(f"Cleared {removed} kept entry/entries from context")
         return removed
