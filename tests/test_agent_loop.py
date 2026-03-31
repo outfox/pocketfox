@@ -6,10 +6,9 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-from pocketfox.agent.context import ContextBuilder
 from loom import FileEntry
 
+from pocketfox.agent.context import ContextBuilder
 from pocketfox.agent.entries import ImageEntry
 from pocketfox.bus.events import InboundMessage
 from pocketfox.bus.queue import MessageBus
@@ -529,20 +528,24 @@ class TestReadFileKeep:
 
     @pytest.mark.asyncio
     async def test_kept_file_deduplicates(self, tmp_path):
-        """Reading the same file with keep=True twice should not duplicate."""
+        """Reading the same file with keep=True twice should deduplicate in output."""
         from pocketfox.agent.tools.filesystem import ReadFileTool
 
         doc = tmp_path / "ref.md"
-        doc.write_text("content", encoding="utf-8")
+        doc.write_text("unique_marker_xyz", encoding="utf-8")
 
         builder = self._make_builder(tmp_path)
         tool = ReadFileTool(context_builder=builder)
         await tool.execute(path=str(doc), keep=True)
         await tool.execute(path=str(doc), keep=True)
 
-        kept = [e for e in builder.context.focus.entries if isinstance(e, FileEntry)]
-        # LOOM deduplicates by identity — same resolved path means same entry
-        assert len(kept) <= 2  # at most 2 (add_entry doesn't dedupe, but identity() enables it)
+        # LOOM deduplicates by identity at compile time — same resolved path
+        # means the content appears only once in the rendered output
+        messages = builder.build_messages(
+            history=[], current_message="hello", channel="test", chat_id="1"
+        )
+        system_text = str(messages)
+        assert system_text.count("unique_marker_xyz") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +619,53 @@ class TestClearKeptEntries:
             e for e in builder.context.foundation.entries if isinstance(e, FileEntry)
         ]
         assert len(bootstrap_after) == 1
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter role in bootstrap files
+# ---------------------------------------------------------------------------
+
+
+class TestFrontmatterRoleBootstrap:
+    """Verify bootstrap FileEntries with frontmatter roles produce correct messages."""
+
+    def test_bootstrap_file_with_assistant_role(self, tmp_path):
+        """A workspace file with role: assistant should emit a separate assistant message."""
+        agents_file = tmp_path / "AGENTS.md"
+        agents_file.write_text(
+            "---\nrole: assistant\n---\nI will help you with tasks.",
+            encoding="utf-8",
+        )
+
+        builder = ContextBuilder(tmp_path, default_context_files=["AGENTS.md"])
+        messages = builder.build_messages(
+            history=[], current_message="hello", channel="test", chat_id="1"
+        )
+
+        roles = [m["role"] for m in messages]
+        assert "assistant" in roles
+
+        assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+        assistant_text = str(assistant_msgs)
+        assert "I will help you with tasks." in assistant_text
+        # Frontmatter should be stripped
+        assert "---" not in assistant_text
+
+    def test_bootstrap_file_without_frontmatter_stays_system(self, tmp_path):
+        """A workspace file without frontmatter should stay in the system message."""
+        agents_file = tmp_path / "AGENTS.md"
+        agents_file.write_text("You are a helpful assistant.", encoding="utf-8")
+
+        builder = ContextBuilder(tmp_path, default_context_files=["AGENTS.md"])
+        messages = builder.build_messages(
+            history=[], current_message="hello", channel="test", chat_id="1"
+        )
+
+        # All non-user messages should be system (plus the user message at the end)
+        non_user = [m for m in messages if m["role"] != "user"]
+        assert all(m["role"] == "system" for m in non_user)
+        system_text = str(non_user)
+        assert "You are a helpful assistant." in system_text
 
 
 # ---------------------------------------------------------------------------

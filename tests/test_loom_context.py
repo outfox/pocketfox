@@ -134,7 +134,7 @@ def test_add_entry(workspace):
     
     entry_id = builder.add_entry("topic", "Test content", name="Test Entry")
     
-    assert entry_id.startswith("entry_")
+    assert isinstance(entry_id, str) and len(entry_id) > 0
     
     # Verify entry is in context
     entries = builder.list_entries("topic")

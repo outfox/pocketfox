@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def _resolve_path(path: str, allowed_dir: Path | None = None) -> Path:
     """Resolve path and optionally enforce directory restriction."""
     resolved = Path(path).expanduser().resolve()
-    if allowed_dir and not str(resolved).startswith(str(allowed_dir.resolve())):
+    if allowed_dir and not resolved.is_relative_to(allowed_dir.resolve()):
         raise PermissionError(f"Path {path} is outside allowed directory {allowed_dir}")
     return resolved
 

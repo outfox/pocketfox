@@ -67,7 +67,7 @@ class ContextBuilder:
         self.skills = SkillsLoader(workspace)
         self._default_files = tuple(default_context_files or ["AGENTS.md", "TOOLS.md"])
         self._contexts: dict[str, Context] = {}
-        self._entry_counter: int = 0
+        self._runtime_entry_ids: set[str] = set()  # loom entry .id values added via add_entry()
 
     @property
     def context(self) -> Context:
@@ -175,18 +175,14 @@ class ContextBuilder:
                 f"Invalid section: {section}. Valid: foundation, focus, topic, step, attention"
             )
 
-        self._entry_counter += 1
-        entry_id = f"entry_{self._entry_counter}"
-
         if isinstance(content, Entry):
             entry = content
         else:
-            entry_name = name or entry_id
-            entry = StringEntry(content, name=entry_name)
-        entry._runtime_id = entry_id  # Tag for later removal
+            entry = StringEntry(content, name=name)
+        self._runtime_entry_ids.add(entry.id)
         section_obj.add(entry)
 
-        return entry_id
+        return entry.id
 
     def remove_entry(self, entry_id: str) -> bool:
         """
@@ -202,8 +198,9 @@ class ContextBuilder:
         for section_name in ("foundation", "focus", "topic", "step", "attention"):
             section = getattr(ctx, section_name)
             for i, entry in enumerate(section.entries):
-                if getattr(entry, "_runtime_id", None) == entry_id:
+                if entry.id == entry_id:
                     section.entries.pop(i)
+                    self._runtime_entry_ids.discard(entry_id)
                     return True
         return False
 
@@ -225,7 +222,7 @@ class ContextBuilder:
                         isinstance(e, ImageEntry)
                         or (
                             isinstance(e, FileEntry)
-                            and getattr(e, "_runtime_id", None) is not None
+                            and e.id in self._runtime_entry_ids
                         )
                     )
                 ]
@@ -254,12 +251,11 @@ class ContextBuilder:
 
         result = []
         for entry in section_obj.entries:
-            entry_id = getattr(entry, "_runtime_id", None)
             compiled = entry.compile() if hasattr(entry, "compile") else str(entry)
             preview = compiled[:100] + "..." if len(compiled) > 100 else compiled
             result.append(
                 {
-                    "id": entry_id,
+                    "id": entry.id if entry.id in self._runtime_entry_ids else None,
                     "name": entry.name,
                     "preview": preview,
                 }
