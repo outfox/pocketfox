@@ -417,7 +417,9 @@ def gateway(
     cron.on_job = on_cron_job
 
     # Create channel manager
-    channels = ChannelManager(config, bus, session_manager=session_manager)
+    channels = ChannelManager(
+        config, bus, session_manager=session_manager, context_builder=agent.context
+    )
 
     if channels.enabled_channels:
         console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")

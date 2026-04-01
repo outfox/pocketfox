@@ -18,6 +18,7 @@ from pocketfox.channels.base import BaseChannel, SendError
 from pocketfox.config.schema import TelegramConfig
 
 if TYPE_CHECKING:
+    from pocketfox.agent.context import ContextBuilder
     from pocketfox.session.manager import SessionManager
 
 
@@ -134,6 +135,7 @@ class TelegramChannel(BaseChannel):
         BotCommand("start", "Start the bot"),
         BotCommand("reset", "Reset conversation history"),
         BotCommand("truncate", "Keep only the last N messages, e.g. /truncate 20"),
+        BotCommand("context", "Send the current LLM context as a JSON file"),
         BotCommand("help", "Show available commands"),
     ]
 
@@ -148,6 +150,7 @@ class TelegramChannel(BaseChannel):
         self.config: TelegramConfig = config
         self.groq_api_key = groq_api_key
         self.session_manager = session_manager
+        self.context_builder: ContextBuilder | None = None
         self._app: Application | None = None
         self._chat_ids: dict[str, int] = {}  # Map sender_id to chat_id for replies
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> typing loop task
@@ -177,6 +180,7 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(CommandHandler("start", self._on_start))
         self._app.add_handler(CommandHandler("reset", self._on_reset))
         self._app.add_handler(CommandHandler("truncate", self._on_truncate))
+        self._app.add_handler(CommandHandler("context", self._on_context))
         self._app.add_handler(CommandHandler("help", self._on_help))
 
         # Add message handler for text, photos, voice, stickers, documents
@@ -585,6 +589,38 @@ class TelegramChannel(BaseChannel):
             parse_mode="HTML",
         )
 
+    async def _on_context(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /context command — send the current LLM context as a JSON file."""
+        if not update.message or not update.effective_user:
+            return
+
+        if self.context_builder is None:
+            await update.message.reply_text("⚠️ Context builder is not available.")
+            return
+
+        import io
+        import json
+
+        chat_id = str(update.message.chat_id)
+        history = []
+        if self.session_manager:
+            session_key = f"{self.name}:{chat_id}"
+            session = self.session_manager.get_or_create(session_key)
+            history = session.get_history()
+
+        messages = self.context_builder.build_messages(
+            history=history,
+            current_message="/context",
+            channel=self.name,
+            chat_id=chat_id,
+        )
+
+        payload = json.dumps(messages, indent=2, ensure_ascii=False)
+        doc = io.BytesIO(payload.encode("utf-8"))
+        doc.name = "context.json"
+
+        await update.message.reply_document(document=doc, caption="Current LLM context")
+
     async def _on_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /help command — show available commands."""
         if not update.message:
@@ -595,6 +631,7 @@ class TelegramChannel(BaseChannel):
             "/start — Start the bot\n"
             "/reset — Reset conversation history\n"
             "/truncate &lt;n&gt; — Keep only the last N messages in context\n"
+            "/context — Send the current LLM context as a JSON file\n"
             "/help — Show this help message\n\n"
             "Just send me a text message to chat!"
         )
