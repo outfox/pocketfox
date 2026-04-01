@@ -5,9 +5,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from loguru import logger
-from loom import Context, Entry, StringEntry
+from loom import Context, Entry, FileEntry, StringEntry
 
-from pocketfox.agent.entries import DateTimeEntry, ImageEntry, KeptFileEntry
+from pocketfox.agent.entries import DateTimeEntry, ImageEntry
 from pocketfox.agent.memory import MemoryStore
 from pocketfox.agent.skills import SkillsLoader
 
@@ -67,7 +67,7 @@ class ContextBuilder:
         self.skills = SkillsLoader(workspace)
         self._default_files = tuple(default_context_files or ["AGENTS.md", "TOOLS.md"])
         self._contexts: dict[str, Context] = {}
-        self._entry_counter: int = 0
+        self._runtime_entry_ids: set[str] = set()  # loom entry .id values added via add_entry()
 
     @property
     def context(self) -> Context:
@@ -103,12 +103,12 @@ class ContextBuilder:
                 include_memory = True
                 if self.memory.memory_file.exists():
                     ctx.foundation.add(
-                        KeptFileEntry(path=self.memory.memory_file, name="Long-term Memory")
+                        FileEntry(path=self.memory.memory_file, name="Long-term Memory")
                     )
                 continue
             file_path = self.workspace / filename
             if file_path.exists():
-                ctx.foundation.add(KeptFileEntry(path=file_path, name=filename))
+                ctx.foundation.add(FileEntry(path=file_path, name=filename))
 
         # Focus: Skills (always loaded)
         always_skills = self.skills.get_always_skills()
@@ -141,7 +141,7 @@ class ContextBuilder:
         if include_memory:
             today_file = self.memory.get_today_file()
             if today_file.exists():
-                ctx.topic.add(KeptFileEntry(path=today_file, name="Today's Notes"))
+                ctx.topic.add(FileEntry(path=today_file, name="Today's Notes"))
 
         # Attention: Volatile data (current time)
         ctx.attention.add(DateTimeEntry(name="Current Time"))
@@ -175,18 +175,14 @@ class ContextBuilder:
                 f"Invalid section: {section}. Valid: foundation, focus, topic, step, attention"
             )
 
-        self._entry_counter += 1
-        entry_id = f"entry_{self._entry_counter}"
-
         if isinstance(content, Entry):
             entry = content
         else:
-            entry_name = name or entry_id
-            entry = StringEntry(content, name=entry_name)
-        entry._runtime_id = entry_id  # Tag for later removal
+            entry = StringEntry(content, name=name)
+        self._runtime_entry_ids.add(entry.id)
         section_obj.add(entry)
 
-        return entry_id
+        return entry.id
 
     def remove_entry(self, entry_id: str) -> bool:
         """
@@ -202,8 +198,9 @@ class ContextBuilder:
         for section_name in ("foundation", "focus", "topic", "step", "attention"):
             section = getattr(ctx, section_name)
             for i, entry in enumerate(section.entries):
-                if getattr(entry, "_runtime_id", None) == entry_id:
+                if entry.id == entry_id:
                     section.entries.pop(i)
+                    self._runtime_entry_ids.discard(entry_id)
                     return True
         return False
 
@@ -214,13 +211,23 @@ class ContextBuilder:
             Number of entries removed.
         """
         removed = 0
-        kept_types = (ImageEntry, KeptFileEntry)
+        removed_ids: set[str] = set()
         for ctx in self._contexts.values():
             for section_name in ("foundation", "focus", "topic", "step", "attention"):
                 section = getattr(ctx, section_name)
-                before = len(section.entries)
-                section.entries = [e for e in section.entries if not isinstance(e, kept_types)]
-                removed += before - len(section.entries)
+                kept, cleared = [], []
+                for e in section.entries:
+                    is_runtime_file = (
+                        isinstance(e, FileEntry) and e.id in self._runtime_entry_ids
+                    )
+                    if isinstance(e, ImageEntry) or is_runtime_file:
+                        cleared.append(e)
+                    else:
+                        kept.append(e)
+                section.entries = kept
+                removed += len(cleared)
+                removed_ids.update(e.id for e in cleared if e.id)
+        self._runtime_entry_ids -= removed_ids
         if removed:
             logger.info(f"Cleared {removed} kept entry/entries from context")
         return removed
@@ -245,12 +252,11 @@ class ContextBuilder:
 
         result = []
         for entry in section_obj.entries:
-            entry_id = getattr(entry, "_runtime_id", None)
             compiled = entry.compile() if hasattr(entry, "compile") else str(entry)
             preview = compiled[:100] + "..." if len(compiled) > 100 else compiled
             result.append(
                 {
-                    "id": entry_id,
+                    "id": entry.id if entry.id in self._runtime_entry_ids else None,
                     "name": entry.name,
                     "preview": preview,
                 }

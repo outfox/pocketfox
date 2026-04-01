@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 def _resolve_path(path: str, allowed_dir: Path | None = None) -> Path:
     """Resolve path and optionally enforce directory restriction."""
     resolved = Path(path).expanduser().resolve()
-    if allowed_dir and not str(resolved).startswith(str(allowed_dir.resolve())):
+    if allowed_dir and not resolved.is_relative_to(allowed_dir.resolve()):
         raise PermissionError(f"Path {path} is outside allowed directory {allowed_dir}")
     return resolved
 
@@ -68,9 +68,9 @@ class ReadFileTool(Tool):
             content = file_path.read_text(encoding="utf-8")
 
             if keep and self._context_builder:
-                from pocketfox.agent.entries import KeptFileEntry
+                from loom import FileEntry
 
-                entry = KeptFileEntry(path=file_path)
+                entry = FileEntry(path=file_path)
                 self._context_builder.add_entry("focus", entry)
                 return f"{content}\n\n(keeping {file_path.name} in context)"
 
