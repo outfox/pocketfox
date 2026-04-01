@@ -12,6 +12,7 @@ from pocketfox.channels.base import BaseChannel
 from pocketfox.config.schema import Config
 
 if TYPE_CHECKING:
+    from pocketfox.agent.context import ContextBuilder
     from pocketfox.session.manager import SessionManager
 
 
@@ -26,11 +27,16 @@ class ChannelManager:
     """
 
     def __init__(
-        self, config: Config, bus: MessageBus, session_manager: "SessionManager | None" = None
+        self,
+        config: Config,
+        bus: MessageBus,
+        session_manager: "SessionManager | None" = None,
+        context_builder: "ContextBuilder | None" = None,
     ):
         self.config = config
         self.bus = bus
         self.session_manager = session_manager
+        self.context_builder = context_builder
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
 
@@ -44,12 +50,14 @@ class ChannelManager:
             try:
                 from pocketfox.channels.telegram import TelegramChannel
 
-                self.channels["telegram"] = TelegramChannel(
+                channel = TelegramChannel(
                     self.config.channels.telegram,
                     self.bus,
                     groq_api_key=self.config.providers.groq.api_key,
                     session_manager=self.session_manager,
                 )
+                channel.context_builder = self.context_builder
+                self.channels["telegram"] = channel
                 logger.info("Telegram channel enabled")
             except ImportError as e:
                 logger.warning(f"Telegram channel not available: {e}")
