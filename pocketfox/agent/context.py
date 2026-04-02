@@ -468,7 +468,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                     messages.append(msg)
 
         # When current_message is None (e.g. context snapshot), skip the user
-        # message entirely but still include attention/step/images.
+        # message, attention, step, and kept images entirely.
         if current_message is not None:
             # Build user message as content blocks so the user's text stays
             # separate from volatile context (attention/step)

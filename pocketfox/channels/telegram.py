@@ -164,6 +164,14 @@ class TelegramChannel(BaseChannel):
         ] = {}  # chat_id -> latest inbound message_id (for composite key lookup)
         self._chat_locks: dict[str, asyncio.Lock] = {}  # per-chat lock to serialise processing
 
+    def _session_key(self, chat_id: str) -> str:
+        """Build a router-aware session key matching the agent loop's format."""
+        if self.router:
+            matched = self.router.match(self.name, chat_id)
+            if matched:
+                return f"{matched[0]}:{self.name}:{chat_id}"
+        return f"{self.name}:{chat_id}"
+
     async def start(self) -> None:
         """Start the Telegram bot with long polling."""
         if not self.config.token:
@@ -502,7 +510,7 @@ class TelegramChannel(BaseChannel):
             return
 
         chat_id = str(update.message.chat_id)
-        session_key = f"{self.name}:{chat_id}"
+        session_key = self._session_key(chat_id)
 
         if self.session_manager is None:
             logger.warning("/reset called but session_manager is not available")
@@ -555,7 +563,7 @@ class TelegramChannel(BaseChannel):
             return
 
         chat_id = str(update.message.chat_id)
-        session_key = f"{self.name}:{chat_id}"
+        session_key = self._session_key(chat_id)
 
         if self.session_manager is None:
             logger.warning("/truncate called but session_manager is not available")
@@ -615,13 +623,18 @@ class TelegramChannel(BaseChannel):
                 context_files = tuple(self.router.get_context_files(context_name))
 
         history = []
+        session_key = self._session_key(chat_id)
+        session_meta: dict = {}
         if self.session_manager:
-            session_key = (
-                f"{context_name}:{self.name}:{chat_id}" if context_name
-                else f"{self.name}:{chat_id}"
-            )
             session = self.session_manager.get_or_create(session_key)
             history = session.get_history()
+            session_meta = {
+                "key": session_key,
+                "created_at": session.created_at.isoformat(),
+                "updated_at": session.updated_at.isoformat(),
+                "message_count": len(session.messages),
+                **session.metadata,
+            }
 
         # Build full context without injecting a current message —
         # commands must be invisible to the agent context
@@ -633,7 +646,11 @@ class TelegramChannel(BaseChannel):
             context_files=context_files,
         )
 
-        payload = json.dumps(messages, indent=2, ensure_ascii=False)
+        payload_obj: dict = {"messages": messages}
+        if session_meta:
+            payload_obj["session"] = session_meta
+
+        payload = json.dumps(payload_obj, indent=2, ensure_ascii=False)
         doc = io.BytesIO(payload.encode("utf-8"))
         doc.name = "context.json"
 
@@ -745,10 +762,9 @@ class TelegramChannel(BaseChannel):
                 file_path = media_dir / f"{media_file.file_id[:16]}{ext}"
                 await file.download_to_drive(str(file_path))
 
-                media_paths.append(str(file_path))
-
                 # Handle voice transcription
                 if media_type == "voice" or media_type == "audio":
+                    media_paths.append(str(file_path))
                     from pocketfox.providers.transcription import GroqTranscriptionProvider
 
                     transcriber = GroqTranscriptionProvider(api_key=self.groq_api_key)
@@ -758,7 +774,18 @@ class TelegramChannel(BaseChannel):
                         content_parts.append(f"[transcription: {transcription}]")
                     else:
                         content_parts.append(f"[{media_type}: {file_path}]")
+                elif media_type == "sticker_video":
+                    # Extract first frame so the LLM can see video stickers
+                    thumb_path = file_path.with_suffix(".jpg")
+                    thumb = await self._extract_video_frame(file_path, thumb_path)
+                    if thumb:
+                        media_paths.append(str(thumb))
+                        content_parts.append(f"[sticker_video: {file_path}]")
+                    else:
+                        media_paths.append(str(file_path))
+                        content_parts.append(f"[sticker_video: {file_path}]")
                 else:
+                    media_paths.append(str(file_path))
                     content_parts.append(f"[{media_type}: {file_path}]")
 
                 logger.debug(f"Downloaded {media_type} to {file_path}")
@@ -921,3 +948,35 @@ class TelegramChannel(BaseChannel):
             "file": "",
         }
         return type_map.get(media_type, "")
+
+    @staticmethod
+    async def _extract_video_frame(video_path: Path, out_path: Path) -> Path | None:
+        """Extract the first frame of a video file as JPEG using ffmpeg.
+
+        Returns the output path on success, or None on failure.
+        """
+        import asyncio as _aio
+        import shutil
+
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            logger.debug("ffmpeg not found, cannot extract video frame")
+            return None
+        try:
+            proc = await _aio.create_subprocess_exec(
+                ffmpeg,
+                "-i", str(video_path),
+                "-frames:v", "1",
+                "-y",
+                str(out_path),
+                stdout=_aio.subprocess.DEVNULL,
+                stderr=_aio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode == 0 and out_path.exists():
+                logger.debug(f"Extracted video frame to {out_path}")
+                return out_path
+            logger.warning(f"ffmpeg frame extraction failed: {stderr.decode()[:200]}")
+        except Exception as e:
+            logger.warning(f"Video frame extraction error: {e}")
+        return None

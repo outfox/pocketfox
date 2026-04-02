@@ -122,17 +122,3 @@ class MemoryStore:
             return "## Long-term Memory\n" + long_term
         return ""
 
-    def get_session_memory(self) -> str:
-        """
-        Get session-specific memory (daily notes, etc.).
-
-        This changes more frequently than long-term memory but is
-        stable within a session.
-
-        Returns:
-            Formatted session memory content.
-        """
-        today = self.read_today()
-        if today:
-            return "## Today's Notes\n" + today
-        return ""

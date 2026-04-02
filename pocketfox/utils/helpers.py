@@ -33,8 +33,8 @@ class PocketfoxPaths:
 
     @property
     def data(self) -> Path:
-        """Agent-specific data (~/.local/share/pocketfox/<name>/)."""
-        return ensure_dir(Path.home() / ".local" / "share" / "pocketfox" / self.agent_name)
+        """Agent-specific data (workspace/.data/) — persisted via workspace volume."""
+        return ensure_dir(self.workspace / ".data")
 
     @property
     def sessions(self) -> Path:

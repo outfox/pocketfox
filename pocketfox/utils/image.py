@@ -68,6 +68,11 @@ def encode_image_file(path: Path) -> tuple[str, str, str, bool] | None:
     import mimetypes as mt
 
     mime, _ = mt.guess_type(str(path))
+    if not mime:
+        # Fallback for platforms where mimetypes misses .webp etc.
+        _fallback = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                     ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp"}
+        mime = _fallback.get(path.suffix.lower())
     if not mime or not mime.startswith("image/"):
         return None
     raw = path.read_bytes()
