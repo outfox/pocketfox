@@ -125,7 +125,7 @@ def test_to_messages_format(workspace):
     assert isinstance(messages, list)
     assert len(messages) == 1
     assert messages[0]["role"] == "system"
-    assert isinstance(messages[0]["content"], str)
+    assert isinstance(messages[0]["content"], list)
 
 
 def test_add_entry(workspace):
