@@ -340,9 +340,8 @@ class ContextBuilder:
         os_name = "macOS" if system == "Darwin" else system
         runtime = f"{os_name} {platform.machine()}, Python {platform.python_version()}"
 
-        return f"""# pocketfox 🦊
-
-You are pocketfox, a helpful AI assistant. You have access to tools that allow you to:
+        return f"""# You are an autonomous AI assistant.
+You have access to tools that allow you to:
 - Read, write, and edit files
 - Execute shell commands
 - Search the web and fetch web pages
@@ -374,7 +373,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
     def build_messages(
         self,
         history: list[dict[str, Any]],
-        current_message: str,
+        current_message: str | None = None,
         skill_names: list[str] | None = None,
         media: list[str] | None = None,
         channel: str | None = None,
@@ -460,34 +459,37 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                     messages.append(msg)
 
         # Build current user message with attention (volatile datetime) appended
-        attention_content = self._compile_attention(ctx)
-        user_content = self._build_user_content(current_message, media)
+        # When current_message is None (e.g. context snapshot), skip the user
+        # message entirely but still include attention/step/images.
+        if current_message is not None:
+            attention_content = self._compile_attention(ctx)
+            user_content = self._build_user_content(current_message, media)
 
-        # Combine user content with attention
-        if isinstance(user_content, str):
-            if attention_content:
-                user_content = f"{user_content}\n\n{attention_content}"
-            messages.append({"role": "user", "content": user_content})
-        else:
-            # user_content is a list (has images)
-            if attention_content:
-                user_content.append({"type": "text", "text": f"\n\n{attention_content}"})
-            messages.append({"role": "user", "content": user_content})
-
-        # Step content (tool outputs, session info) appended after user message
-        step_content = self._compile_step(ctx)
-        if step_content:
-            # Append step as additional context in the user message
-            # This keeps it after attention but before assistant response
-            last_msg = messages[-1]
-            if isinstance(last_msg["content"], str):
-                last_msg["content"] = f"{last_msg['content']}\n\n{step_content}"
+            # Combine user content with attention
+            if isinstance(user_content, str):
+                if attention_content:
+                    user_content = f"{user_content}\n\n{attention_content}"
+                messages.append({"role": "user", "content": user_content})
             else:
-                last_msg["content"].append({"type": "text", "text": f"\n\n{step_content}"})
+                # user_content is a list (has images)
+                if attention_content:
+                    user_content.append({"type": "text", "text": f"\n\n{attention_content}"})
+                messages.append({"role": "user", "content": user_content})
 
-        # Inject kept image blocks into the current user message
-        # (must be in a user message — system messages only support text blocks)
-        self._inject_image_blocks(messages, ctx)
+            # Step content (tool outputs, session info) appended after user message
+            step_content = self._compile_step(ctx)
+            if step_content:
+                # Append step as additional context in the user message
+                # This keeps it after attention but before assistant response
+                last_msg = messages[-1]
+                if isinstance(last_msg["content"], str):
+                    last_msg["content"] = f"{last_msg['content']}\n\n{step_content}"
+                else:
+                    last_msg["content"].append({"type": "text", "text": f"\n\n{step_content}"})
+
+            # Inject kept image blocks into the current user message
+            # (must be in a user message — system messages only support text blocks)
+            self._inject_image_blocks(messages, ctx)
 
         # Clear volatile sections now that we've used them
         ctx.step.clear()

@@ -608,9 +608,10 @@ class TelegramChannel(BaseChannel):
             session = self.session_manager.get_or_create(session_key)
             history = session.get_history()
 
+        # Build full context without injecting a current message —
+        # commands must be invisible to the agent context
         messages = self.context_builder.build_messages(
             history=history,
-            current_message="/context",
             channel=self.name,
             chat_id=chat_id,
         )
