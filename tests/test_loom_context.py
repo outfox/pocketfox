@@ -98,9 +98,12 @@ def test_build_messages_uses_loom(workspace):
     assert len(messages) >= 2  # system + user
     assert messages[0]["role"] == "system"
     assert messages[-1]["role"] == "user"
-    # User content includes attention section (datetime)
-    assert "Hello!" in messages[-1]["content"]
-    assert "Current Time" in messages[-1]["content"]
+    # User message is block format: user text + volatile attention (datetime)
+    content = messages[-1]["content"]
+    assert isinstance(content, list)
+    texts = [b["text"] for b in content if b.get("type") == "text"]
+    assert any("Hello!" in t for t in texts)
+    assert any("Current Time" in t for t in texts)
 
 
 def test_context_is_persistent(workspace):

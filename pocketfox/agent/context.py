@@ -420,6 +420,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             cache_breakpoints=["foundation", "topic"],
             clear_volatile=False,  # We'll handle step/attention separately
             cache_ttl=cache_ttl,
+            sections=["foundation", "focus", "topic", "convo"],
         )
 
         # Add history with cache breakpoint on the LAST message
@@ -461,37 +462,30 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                 else:
                     messages.append(msg)
 
-        # Build current user message with attention (volatile datetime) appended
         # When current_message is None (e.g. context snapshot), skip the user
         # message entirely but still include attention/step/images.
         if current_message is not None:
-            attention_content = self._compile_attention(ctx)
+            # Build user message as content blocks so the user's text stays
+            # separate from volatile context (attention/step)
             user_content = self._build_user_content(current_message, media)
 
-            # Combine user content with attention
+            # Normalise to block format
             if isinstance(user_content, str):
-                if attention_content:
-                    user_content = f"{user_content}\n\n{attention_content}"
-                messages.append({"role": "user", "content": user_content})
+                blocks: list[dict[str, Any]] = [{"type": "text", "text": user_content}]
             else:
-                # user_content is a list (has images)
-                if attention_content:
-                    user_content.append({"type": "text", "text": f"\n\n{attention_content}"})
-                messages.append({"role": "user", "content": user_content})
+                blocks = list(user_content)
 
-            # Step content (tool outputs, session info) appended after user message
+            # Append volatile context as separate blocks (not modifying user text)
+            attention_content = self._compile_attention(ctx)
+            if attention_content:
+                blocks.append({"type": "text", "text": attention_content})
             step_content = self._compile_step(ctx)
             if step_content:
-                # Append step as additional context in the user message
-                # This keeps it after attention but before assistant response
-                last_msg = messages[-1]
-                if isinstance(last_msg["content"], str):
-                    last_msg["content"] = f"{last_msg['content']}\n\n{step_content}"
-                else:
-                    last_msg["content"].append({"type": "text", "text": f"\n\n{step_content}"})
+                blocks.append({"type": "text", "text": step_content})
 
-            # Inject kept image blocks into the current user message
-            # (must be in a user message — system messages only support text blocks)
+            messages.append({"role": "user", "content": blocks})
+
+            # Inject kept image blocks into the conversation
             self._inject_image_blocks(messages, ctx)
 
         # Clear volatile sections now that we've used them
