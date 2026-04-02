@@ -153,6 +153,8 @@ class ContextBuilder:
         section: str,
         content: str | Entry,
         name: str | None = None,
+        context_name: str | None = None,
+        context_files: tuple[str, ...] | None = None,
     ) -> str:
         """
         Add an entry to a section of the persistent context.
@@ -161,6 +163,8 @@ class ContextBuilder:
             section: Section name (foundation, focus, topic, step, attention).
             content: Text content (creates StringEntry) or a pre-built Entry.
             name: Optional name for the entry (ignored if content is an Entry).
+            context_name: Target context (default if None).
+            context_files: Files for context creation (used with context_name).
 
         Returns:
             The entry ID (for later removal).
@@ -168,7 +172,11 @@ class ContextBuilder:
         Raises:
             ValueError: If section name is invalid.
         """
-        ctx = self.context
+        if context_name:
+            files = context_files or self._default_files
+            ctx = self._get_or_create_context(context_name, files)
+        else:
+            ctx = self.context
         section_obj = getattr(ctx, section, None)
         if section_obj is None:
             raise ValueError(

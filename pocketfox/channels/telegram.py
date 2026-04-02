@@ -136,6 +136,7 @@ class TelegramChannel(BaseChannel):
         BotCommand("start", "Start the bot"),
         BotCommand("reset", "Reset conversation history"),
         BotCommand("truncate", "Keep only the last N messages, e.g. /truncate 20"),
+        BotCommand("load", "Load a file into context, e.g. /load system notes.md"),
         BotCommand("context", "Send the current LLM context as a JSON file"),
         BotCommand("help", "Show available commands"),
     ]
@@ -190,6 +191,7 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(CommandHandler("start", self._on_start))
         self._app.add_handler(CommandHandler("reset", self._on_reset))
         self._app.add_handler(CommandHandler("truncate", self._on_truncate))
+        self._app.add_handler(CommandHandler("load", self._on_load))
         self._app.add_handler(CommandHandler("context", self._on_context))
         self._app.add_handler(CommandHandler("help", self._on_help))
 
@@ -599,6 +601,81 @@ class TelegramChannel(BaseChannel):
             parse_mode="HTML",
         )
 
+    async def _on_load(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /load <role> <file> — load a file into the agent context.
+
+        Roles:
+            system    — inject into the system prompt (foundation section)
+            assistant — inject as an assistant message after the system prompt
+
+        Files are resolved relative to the workspace. The file stays in
+        context until /reset or container restart.
+
+        Usage: /load system notes.md
+               /load assistant persona.md
+        """
+        if not update.message or not update.effective_user:
+            return
+
+        if self.context_builder is None:
+            await update.message.reply_text("⚠️ Context builder is not available.")
+            return
+
+        args = context.args or []
+        if len(args) < 2:
+            await update.message.reply_text(
+                "⚠️ Usage: <code>/load &lt;role&gt; &lt;file&gt;</code>\n\n"
+                "Roles:\n"
+                "  <code>system</code> — add to the system prompt\n"
+                "  <code>assistant</code> — add as assistant perspective\n\n"
+                "Example: <code>/load system notes.md</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        role = args[0].lower()
+        if role not in ("system", "assistant"):
+            await update.message.reply_text(
+                f"⚠️ Unknown role <code>{role}</code>. Use <code>system</code> or <code>assistant</code>.",
+                parse_mode="HTML",
+            )
+            return
+
+        filename = " ".join(args[1:])
+        file_path = (self.context_builder.workspace / filename).resolve()
+
+        # Safety: must be inside workspace
+        workspace_resolved = self.context_builder.workspace.resolve()
+        if not file_path.is_relative_to(workspace_resolved):
+            await update.message.reply_text("⚠️ File must be inside the workspace.")
+            return
+
+        if not file_path.is_file():
+            await update.message.reply_text(f"⚠️ File not found: <code>{filename}</code>", parse_mode="HTML")
+            return
+
+        from loom import FileEntry
+
+        chat_id = str(update.message.chat_id)
+        context_name = None
+        context_files = None
+        if self.router:
+            matched = self.router.match(self.name, chat_id)
+            if matched:
+                context_name = matched[0]
+                context_files = tuple(self.router.get_context_files(context_name))
+
+        entry = FileEntry(path=file_path, name=filename, role=role)
+        entry_id = self.context_builder.add_entry(
+            "foundation", entry, context_name=context_name, context_files=context_files,
+        )
+
+        logger.info(f"Loaded {filename} as {role} into foundation (entry {entry_id})")
+        await update.message.reply_text(
+            f"📄 Loaded <code>{filename}</code> as <b>{role}</b> into context.",
+            parse_mode="HTML",
+        )
+
     async def _on_context(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /context command — send the current LLM context as a JSON file."""
         if not update.message or not update.effective_user:
@@ -666,6 +743,7 @@ class TelegramChannel(BaseChannel):
             "/start — Start the bot\n"
             "/reset — Reset conversation history\n"
             "/truncate &lt;n&gt; — Keep only the last N messages in context\n"
+            "/load &lt;role&gt; &lt;file&gt; — Load a file into context (system|assistant)\n"
             "/context — Send the current LLM context as a JSON file\n"
             "/help — Show this help message\n\n"
             "Just send me a text message to chat!"
