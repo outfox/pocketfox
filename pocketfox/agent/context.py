@@ -411,10 +411,13 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             context_files=context_files,
         )
 
-        # System prompt: foundation, focus, topic only (stable parts)
-        # Cache breakpoint after topic - this caches the entire system prompt
+        # System prompt with cache breakpoints (4 total, Anthropic max):
+        # 1. after foundation — largest, most stable (identity, AGENTS, TOOLS, MEMORY)
+        # 2. after topic — daily notes, session info
+        # 3. after non-system entries — loom adds this on the last role message
+        # 4. after last history message — added below in the history loop
         messages = ctx.to_messages(
-            cache_breakpoints=["topic"],
+            cache_breakpoints=["foundation", "topic"],
             clear_volatile=False,  # We'll handle step/attention separately
             cache_ttl=cache_ttl,
         )
