@@ -13,6 +13,7 @@ from pocketfox.config.schema import Config
 
 if TYPE_CHECKING:
     from pocketfox.agent.context import ContextBuilder
+    from pocketfox.agent.router import ContextRouter
     from pocketfox.session.manager import SessionManager
 
 
@@ -32,11 +33,13 @@ class ChannelManager:
         bus: MessageBus,
         session_manager: "SessionManager | None" = None,
         context_builder: "ContextBuilder | None" = None,
+        router: "ContextRouter | None" = None,
     ):
         self.config = config
         self.bus = bus
         self.session_manager = session_manager
         self.context_builder = context_builder
+        self.router = router
         self.channels: dict[str, BaseChannel] = {}
         self._dispatch_task: asyncio.Task | None = None
 
@@ -57,6 +60,7 @@ class ChannelManager:
                     session_manager=self.session_manager,
                 )
                 channel.context_builder = self.context_builder
+                channel.router = self.router
                 self.channels["telegram"] = channel
                 logger.info("Telegram channel enabled")
             except ImportError as e:

@@ -418,7 +418,8 @@ def gateway(
 
     # Create channel manager
     channels = ChannelManager(
-        config, bus, session_manager=session_manager, context_builder=agent.context
+        config, bus, session_manager=session_manager, context_builder=agent.context,
+        router=router,
     )
 
     if channels.enabled_channels:

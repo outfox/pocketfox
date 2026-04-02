@@ -19,6 +19,7 @@ from pocketfox.config.schema import TelegramConfig
 
 if TYPE_CHECKING:
     from pocketfox.agent.context import ContextBuilder
+    from pocketfox.agent.router import ContextRouter
     from pocketfox.session.manager import SessionManager
 
 
@@ -151,6 +152,7 @@ class TelegramChannel(BaseChannel):
         self.groq_api_key = groq_api_key
         self.session_manager = session_manager
         self.context_builder: ContextBuilder | None = None
+        self.router: ContextRouter | None = None
         self._app: Application | None = None
         self._chat_ids: dict[str, int] = {}  # Map sender_id to chat_id for replies
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> typing loop task
@@ -602,9 +604,22 @@ class TelegramChannel(BaseChannel):
         import json
 
         chat_id = str(update.message.chat_id)
+
+        # Resolve context name and files via router (same as agent loop)
+        context_name = None
+        context_files = None
+        if self.router:
+            matched = self.router.match(self.name, chat_id)
+            if matched:
+                context_name = matched[0]
+                context_files = tuple(self.router.get_context_files(context_name))
+
         history = []
         if self.session_manager:
-            session_key = f"{self.name}:{chat_id}"
+            session_key = (
+                f"{context_name}:{self.name}:{chat_id}" if context_name
+                else f"{self.name}:{chat_id}"
+            )
             session = self.session_manager.get_or_create(session_key)
             history = session.get_history()
 
@@ -614,6 +629,8 @@ class TelegramChannel(BaseChannel):
             history=history,
             channel=self.name,
             chat_id=chat_id,
+            context_name=context_name,
+            context_files=context_files,
         )
 
         payload = json.dumps(messages, indent=2, ensure_ascii=False)
