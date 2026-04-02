@@ -15,6 +15,15 @@ if TYPE_CHECKING:
 # Supported MIME types for Claude vision
 SUPPORTED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
+# Fallback for platforms where mimetypes doesn't know .webp etc.
+_EXT_TO_MIME = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+
 
 class ViewImageTool(Tool):
     """
@@ -90,8 +99,10 @@ class ViewImageTool(Tool):
             if not file_path.is_file():
                 return f"Error: Not a file: {path}"
 
-            # Check MIME type
+            # Check MIME type (mimetypes may miss .webp on some platforms)
             mime_type, _ = mimetypes.guess_type(str(file_path))
+            if not mime_type:
+                mime_type = _EXT_TO_MIME.get(file_path.suffix.lower())
             if not mime_type or mime_type not in SUPPORTED_TYPES:
                 supported = ", ".join(sorted(SUPPORTED_TYPES))
                 return f"Error: Unsupported image type '{mime_type}'. Supported: {supported}"

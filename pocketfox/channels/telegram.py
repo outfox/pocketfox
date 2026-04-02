@@ -768,6 +768,10 @@ class TelegramChannel(BaseChannel):
 
         content = "\n".join(content_parts) if content_parts else "[empty message]"
 
+        # Prepend [username] so the agent can tell users apart
+        display_name = user.username or user.first_name or str(user.id)
+        content = f"[{display_name}] {content}"
+
         logger.debug(f"Telegram message from {sender_id}: {content[:50]}...")
 
         str_chat_id = str(chat_id)
