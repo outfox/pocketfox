@@ -17,8 +17,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "typer>=0.23.0",
-    "litellm>=1.81.10",
+    "typer==0.23.0",
+    "litellm==1.83.1",
     "context-loom @ {root:uri}/../loom",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
@@ -31,11 +31,11 @@ dependencies = [
     "croniter>=2.0.0",
     "tzdata>=2024.1",
     "dingtalk-stream>=0.4.0",
-    "python-telegram-bot[socks]>=21.0",
+    "python-telegram-bot[socks]>=22.7",
     "lark-oapi>=1.0.0",
     "socksio>=1.0.0",
     "tomli_w>=1.0.0",
-    "elevenlabs>=2.35.0",
+    "elevenlabs>=2.41.0",
 ]
 
 [project.optional-dependencies]
