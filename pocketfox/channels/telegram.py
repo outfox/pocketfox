@@ -1005,6 +1005,16 @@ class TelegramChannel(BaseChannel):
 
     def _get_extension(self, media_type: str, mime_type: str | None) -> str:
         """Get file extension based on media type."""
+        # Sticker types: always use the known extension — Telegram's mime_type
+        # can be misleading (e.g. image/jpeg from the thumbnail).
+        _sticker_exts = {
+            "sticker": ".webp",
+            "sticker_animated": ".tgs",
+            "sticker_video": ".webm",
+        }
+        if media_type in _sticker_exts:
+            return _sticker_exts[media_type]
+
         if mime_type:
             ext_map = {
                 "image/jpeg": ".jpg",
@@ -1021,9 +1031,6 @@ class TelegramChannel(BaseChannel):
             "image": ".jpg",
             "voice": ".ogg",
             "audio": ".mp3",
-            "sticker": ".webp",  # Static stickers
-            "sticker_animated": ".tgs",  # Animated (Lottie) stickers
-            "sticker_video": ".webm",  # Video stickers
             "file": "",
         }
         return type_map.get(media_type, "")
