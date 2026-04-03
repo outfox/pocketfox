@@ -1,14 +1,12 @@
-"""OpenRouter provider — direct HTTP client against the OpenRouter API."""
+"""OpenRouter provider — uses the openrouter SDK for LLM calls."""
 
+import json
 from typing import Any
 
-import httpx
 from loguru import logger
+from openrouter import OpenRouter
 
-from pocketfox.providers.base import LLMProvider, LLMResponse
-from pocketfox.providers.response_parser import parse_chat_response
-
-_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+from pocketfox.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 # Per-model parameter overrides.
 _MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
@@ -17,11 +15,11 @@ _MODEL_OVERRIDES: dict[str, dict[str, Any]] = {
 
 
 class OpenRouterProvider(LLMProvider):
-    """LLM provider using the OpenRouter API.
+    """LLM provider using the OpenRouter SDK.
 
     OpenRouter is a multi-provider gateway that routes to 300+ models
     (Anthropic, OpenAI, DeepSeek, Gemini, Groq, etc.) through a single
-    API key — no per-provider env vars or prefix routing needed.
+    API key.
     """
 
     def __init__(
@@ -30,13 +28,10 @@ class OpenRouterProvider(LLMProvider):
         default_model: str = "anthropic/claude-sonnet-4-6",
         extra_headers: dict[str, str] | None = None,
     ):
-        super().__init__(api_key, api_base=_API_URL)
+        super().__init__(api_key, api_base=None)
         self.default_model = default_model
-        self._headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            **(extra_headers or {}),
-        }
+        self._extra_headers = extra_headers
+        self._client = OpenRouter(api_key=api_key)
 
     @staticmethod
     def _resolve_model(model: str) -> str:
@@ -55,7 +50,7 @@ class OpenRouterProvider(LLMProvider):
     ) -> LLMResponse:
         model = self._resolve_model(model or self.default_model)
 
-        body: dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
@@ -65,29 +60,72 @@ class OpenRouterProvider(LLMProvider):
         # Per-model overrides
         for pattern, overrides in _MODEL_OVERRIDES.items():
             if pattern in model.lower():
-                body.update(overrides)
+                kwargs.update(overrides)
                 break
 
         if tools:
-            body["tools"] = tools
-            body["tool_choice"] = "auto"
+            kwargs["tools"] = tools
+            kwargs["tool_choice"] = "auto"
+
+        if self._extra_headers:
+            kwargs["http_headers"] = self._extra_headers
 
         try:
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    _API_URL,
-                    headers=self._headers,
-                    json=body,
-                    timeout=300.0,
-                )
-                resp.raise_for_status()
-                return parse_chat_response(resp.json())
+            result = await self._client.chat.send_async(**kwargs)
+            return self._parse_response(result)
         except Exception as e:
             logger.error(f"OpenRouter API error: {e}")
             return LLMResponse(
                 content=f"Error calling LLM: {e}",
                 finish_reason="error",
             )
+
+    @staticmethod
+    def _parse_response(result: Any) -> LLMResponse:
+        """Parse OpenRouter SDK response into LLMResponse."""
+        choice = result.choices[0]
+        message = choice.message
+
+        # Content
+        content = message.content
+
+        # Tool calls
+        tool_calls = []
+        for tc in message.tool_calls or []:
+            args = tc.function.arguments
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {"raw": args}
+            tool_calls.append(
+                ToolCallRequest(id=tc.id, name=tc.function.name, arguments=args)
+            )
+
+        # Usage statistics
+        usage: dict[str, int] = {}
+        if result.usage:
+            usage["prompt_tokens"] = int(result.usage.prompt_tokens)
+            usage["completion_tokens"] = int(result.usage.completion_tokens)
+            usage["total_tokens"] = int(result.usage.total_tokens)
+
+            # Cache statistics
+            details = result.usage.prompt_tokens_details
+            if details and hasattr(details, "cached_tokens") and details.cached_tokens:
+                usage["cache_read_input_tokens"] = int(details.cached_tokens)
+            if details and hasattr(details, "cache_write_tokens") and details.cache_write_tokens:
+                usage["cache_creation_input_tokens"] = int(details.cache_write_tokens)
+
+        # Reasoning content (DeepSeek-R1, Kimi, etc.)
+        reasoning_content = getattr(message, "reasoning", None)
+
+        return LLMResponse(
+            content=content,
+            tool_calls=tool_calls,
+            finish_reason=choice.finish_reason or "stop",
+            usage=usage,
+            reasoning_content=reasoning_content,
+        )
 
     def get_default_model(self) -> str:
         return self.default_model

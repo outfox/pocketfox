@@ -301,25 +301,14 @@ This file stores important information that should persist across sessions.
 
 def _make_provider(config):
     """Create an LLM provider from config. Exits if no API key found."""
+    from pocketfox.providers.openrouter_provider import OpenRouterProvider
+
     p = config.get_provider()
     model = config.agents.defaults.model
     if not (p and p.api_key):
         console.print("[red]Error: No API key configured.[/red]")
         console.print("Set one in .config/pocketfox/config.toml under [providers.openrouter]")
         raise typer.Exit(1)
-
-    api_base = config.get_api_base()
-    if api_base:
-        from pocketfox.providers.openai_compat_provider import OpenAICompatProvider
-
-        return OpenAICompatProvider(
-            api_key=p.api_key,
-            api_base=api_base,
-            default_model=model,
-            extra_headers=p.extra_headers,
-        )
-
-    from pocketfox.providers.openrouter_provider import OpenRouterProvider
 
     return OpenRouterProvider(
         api_key=p.api_key,
@@ -1052,12 +1041,6 @@ def status():
         console.print(
             f"OpenRouter: {'[green]✓[/green]' if or_key else '[dim]not set[/dim]'}"
         )
-
-        # OpenAI-compat (optional)
-        oc = config.providers.openai_compat
-        if oc.api_key or oc.api_base:
-            label = f"[green]✓ {oc.api_base}[/green]" if oc.api_base else "[green]✓[/green]"
-            console.print(f"OpenAI-Compat: {label}")
 
         # Groq (transcription)
         if config.providers.groq.api_key:

@@ -6,11 +6,6 @@
 [providers.openrouter]
 api_key = "${OPENROUTER_API_KEY}"
 
-# Optional: for local/custom OpenAI-compatible endpoints (vLLM, etc.)
-# [providers.openai_compat]
-# api_key = "..."
-# api_base = "http://localhost:8000/v1"
-
 [providers.groq]
 api_key = "${GROQ_API_KEY}"  # Used for Whisper voice transcription
 

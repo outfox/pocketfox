@@ -382,21 +382,11 @@ Config file: `~/.pocketfox/config.toml`
 <details>
 <summary><b>Provider Architecture (Developer Guide)</b></summary>
 
-All cloud models are accessed through **OpenRouter** (`pocketfox/providers/openrouter_provider.py`) — a single API key routes to 300+ models across Anthropic, OpenAI, DeepSeek, Gemini, and more.
-
-For local or custom OpenAI-compatible endpoints (vLLM, AiHubMix, etc.), use the **OpenAI-compat provider** (`pocketfox/providers/openai_compat_provider.py`).
-
-Both providers share a common response parser (`pocketfox/providers/response_parser.py`) and implement the `LLMProvider` ABC from `pocketfox/providers/base.py`.
+All models are accessed through **OpenRouter** (`pocketfox/providers/openrouter_provider.py`) — a single API key routes to 300+ models across Anthropic, OpenAI, DeepSeek, Gemini, and more.
 
 ```toml
-# Primary: OpenRouter (cloud models)
 [providers.openrouter]
 api_key = "sk-or-v1-..."
-
-# Optional: local/custom OpenAI-compatible endpoint
-[providers.openai_compat]
-api_key = "..."
-api_base = "http://localhost:8000/v1"
 ```
 
 Models use the `provider/model-name` format (e.g. `anthropic/claude-sonnet-4-6`, `deepseek/deepseek-chat`).

@@ -56,29 +56,18 @@ class TTYAgent:
     def provider(self):
         """Lazy-load provider."""
         if self._provider is None:
+            from pocketfox.providers.openrouter_provider import OpenRouterProvider
+
             cfg = self.config
             effective_model = self.model or cfg.agents.defaults.model
             p = cfg.get_provider(effective_model)
             if not (p and p.api_key):
                 raise RuntimeError("No API key configured")
-            api_base = cfg.get_api_base(effective_model)
-            if api_base:
-                from pocketfox.providers.openai_compat_provider import OpenAICompatProvider
-
-                self._provider = OpenAICompatProvider(
-                    api_key=p.api_key,
-                    api_base=api_base,
-                    default_model=effective_model,
-                    extra_headers=p.extra_headers,
-                )
-            else:
-                from pocketfox.providers.openrouter_provider import OpenRouterProvider
-
-                self._provider = OpenRouterProvider(
-                    api_key=p.api_key,
-                    default_model=effective_model,
-                    extra_headers=p.extra_headers,
-                )
+            self._provider = OpenRouterProvider(
+                api_key=p.api_key,
+                default_model=effective_model,
+                extra_headers=p.extra_headers,
+            )
         return self._provider
 
     @property

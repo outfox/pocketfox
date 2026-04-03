@@ -124,7 +124,6 @@ class ProvidersConfig(BaseModel):
     """Configuration for LLM providers.
 
     Primary: ``openrouter`` — routes to 300+ models via a single API key.
-    Fallback: ``openai_compat`` — for vLLM/local servers or custom gateways.
 
     Legacy provider fields (anthropic, openai, deepseek, …) are kept for
     backward-compatible config loading but are no longer used for routing.
@@ -132,7 +131,6 @@ class ProvidersConfig(BaseModel):
     """
 
     openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
-    openai_compat: ProviderConfig = Field(default_factory=ProviderConfig)
     groq: ProviderConfig = Field(default_factory=ProviderConfig)  # Whisper transcription
 
     # Legacy fields — kept so old config.toml files still load without error.
@@ -256,13 +254,10 @@ class Config(BaseSettings):
     ) -> tuple["ProviderConfig | None", str | None]:
         """Match provider config and its name. Returns (config, provider_name).
 
-        Priority: openrouter > openai_compat > legacy fields (with warning).
+        Priority: openrouter > legacy fields (with warning).
         """
         if self.providers.openrouter.api_key:
             return self.providers.openrouter, "openrouter"
-
-        if self.providers.openai_compat.api_key:
-            return self.providers.openai_compat, "openai_compat"
 
         # Check legacy fields and warn
         for name in self._LEGACY_PROVIDERS:
@@ -271,7 +266,7 @@ class Config(BaseSettings):
                 from loguru import logger
                 logger.warning(
                     f"Provider '{name}' is deprecated — "
-                    f"migrate to [providers.openrouter] or [providers.openai_compat]"
+                    f"migrate to [providers.openrouter]"
                 )
                 return p, name
 
@@ -283,7 +278,7 @@ class Config(BaseSettings):
         return p
 
     def get_provider_name(self, model: str | None = None) -> str | None:
-        """Get the name of the matched provider (e.g. "openrouter", "openai_compat")."""
+        """Get the name of the matched provider (e.g. "openrouter")."""
         _, name = self._match_provider(model)
         return name
 
@@ -291,12 +286,5 @@ class Config(BaseSettings):
         """Get API key for the matched provider."""
         p = self.get_provider(model)
         return p.api_key if p else None
-
-    def get_api_base(self, model: str | None = None) -> str | None:
-        """Get API base URL for the matched provider."""
-        p, _ = self._match_provider(model)
-        if p and p.api_base:
-            return p.api_base
-        return None
 
     model_config = SettingsConfigDict(env_prefix="pf_", env_nested_delimiter="__")
