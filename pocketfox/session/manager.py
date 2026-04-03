@@ -59,8 +59,14 @@ class Session:
                 else self.messages[-max_messages:]
             )
 
-        # Convert to LLM format (just role and content)
-        return [{"role": m["role"], "content": m["content"]} for m in recent]
+        # Convert to LLM format (role, content, and optional media paths)
+        result = []
+        for m in recent:
+            entry: dict[str, Any] = {"role": m["role"], "content": m["content"]}
+            if m.get("media"):
+                entry["media"] = m["media"]
+            result.append(entry)
+        return result
 
     def clear(self) -> None:
         """Clear all messages in the session."""

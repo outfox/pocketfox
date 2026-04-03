@@ -443,9 +443,13 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                 cc["max_age_seconds"] = cache_ttl
 
             for i, msg in enumerate(history):
+                # Rebuild content blocks for messages with persisted media paths
+                content = msg.get("content", "")
+                if msg.get("media") and msg["role"] == "user" and isinstance(content, str):
+                    content = self._build_user_content(content, msg["media"])
+
                 if i == breakpoint_idx:
                     # Add cache breakpoint to this message
-                    content = msg.get("content", "")
                     if isinstance(content, str):
                         messages.append(
                             {
@@ -471,7 +475,11 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                                 break
                         messages.append({"role": msg["role"], "content": content_copy})
                 else:
-                    messages.append(msg)
+                    if isinstance(content, str):
+                        messages.append(msg)
+                    else:
+                        # Replace string content with rebuilt content blocks
+                        messages.append({"role": msg["role"], "content": content})
 
         # When current_message is None (e.g. context snapshot), skip the user
         # message, attention, step, and kept images entirely.

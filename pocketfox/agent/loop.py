@@ -228,11 +228,19 @@ class AgentLoop:
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
         logger.info(f"[{context_name}] Processing from {msg.channel}:{msg.sender_id}: {preview}")
 
+        # Snapshot history before saving user message (build_messages adds it separately)
+        history = session.get_history()
+
+        # Save user message to session early so /context reflects it during processing
+        media = msg.media if msg.media else None
+        session.add_message("user", msg.content, **({"media": msg.media} if media else {}))
+        self.sessions.save(session)
+
         # Build initial messages
         messages = self.context.build_messages(
-            history=session.get_history(),
+            history=history,
             current_message=msg.content,
-            media=msg.media if msg.media else None,
+            media=media,
             channel=msg.channel,
             chat_id=msg.chat_id,
             cache_ttl=msg.cache_ttl,
@@ -243,8 +251,9 @@ class AgentLoop:
         # Run the LLM loop
         final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
-        # LLM error — don't save to session
+        # LLM error — roll back the eagerly-saved user message
         if self._is_llm_error(final_content):
+            self._rollback_last_message(session)
             error_text = self._strip_error_prefix(final_content)
             outputs = self.router.get_outputs(context_name, msg.channel, msg.chat_id)
             return [
@@ -258,8 +267,7 @@ class AgentLoop:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info(f"[{context_name}] Response to {msg.channel}:{msg.sender_id}: {preview}")
 
-        # Save to session
-        session.add_message("user", msg.content)
+        # Save assistant response (user message already saved above)
         session.add_message("assistant", final_content)
         self.sessions.save(session)
 
@@ -362,6 +370,12 @@ class AgentLoop:
         """Strip the sentinel prefix to get user-facing error text."""
         return content.removeprefix(_LLM_ERROR_PREFIX)
 
+    def _rollback_last_message(self, session: object) -> None:
+        """Remove the last message from a session and re-save (undo eager save)."""
+        if hasattr(session, "messages") and session.messages:
+            session.messages.pop()
+            self.sessions.save(session)
+
     async def _process_message(self, msg: InboundMessage) -> OutboundMessage | None:
         """Process a single inbound message (legacy non-router path)."""
         if msg.channel == "system":
@@ -389,10 +403,18 @@ class AgentLoop:
 
         session = self.sessions.get_or_create(msg.session_key)
 
+        # Snapshot history before saving user message (build_messages adds it separately)
+        history = session.get_history()
+
+        # Save user message to session early so /context reflects it during processing
+        media = msg.media if msg.media else None
+        session.add_message("user", msg.content, **({"media": msg.media} if media else {}))
+        self.sessions.save(session)
+
         messages = self.context.build_messages(
-            history=session.get_history(),
+            history=history,
             current_message=msg.content,
-            media=msg.media if msg.media else None,
+            media=media,
             channel=msg.channel,
             chat_id=msg.chat_id,
             cache_ttl=msg.cache_ttl,
@@ -401,8 +423,9 @@ class AgentLoop:
 
         final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
-        # LLM error — return error directly without saving to session
+        # LLM error — roll back the eagerly-saved user message
         if self._is_llm_error(final_content):
+            self._rollback_last_message(session)
             return OutboundMessage(
                 channel=msg.channel,
                 chat_id=msg.chat_id,
@@ -415,7 +438,7 @@ class AgentLoop:
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
         logger.info(f"Response to {msg.channel}:{msg.sender_id}: {preview}")
 
-        session.add_message("user", msg.content)
+        # Save assistant response (user message already saved above)
         session.add_message("assistant", final_content)
         self.sessions.save(session)
 
@@ -463,8 +486,16 @@ class AgentLoop:
             session_key = f"{origin_channel}:{origin_chat_id}"
         session = self.sessions.get_or_create(session_key)
 
+        # Snapshot history before saving system message (build_messages adds it separately)
+        history = session.get_history()
+
+        # Save system message to session early so /context reflects it during processing
+        system_user_msg = f"[System: {msg.sender_id}] {msg.content}"
+        session.add_message("user", system_user_msg)
+        self.sessions.save(session)
+
         messages = self.context.build_messages(
-            history=session.get_history(),
+            history=history,
             current_message=msg.content,
             channel=origin_channel,
             chat_id=origin_chat_id,
@@ -475,6 +506,7 @@ class AgentLoop:
         final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
         if self._is_llm_error(final_content):
+            self._rollback_last_message(session)
             error_text = self._strip_error_prefix(final_content)
             error_msg = (
                 "A background task failed due to an API error.\n\n"
@@ -488,7 +520,7 @@ class AgentLoop:
         if final_content is None:
             final_content = "Background task completed."
 
-        session.add_message("user", f"[System: {msg.sender_id}] {msg.content}")
+        # Save assistant response (system message already saved above)
         session.add_message("assistant", final_content)
         self.sessions.save(session)
 
