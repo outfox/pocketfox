@@ -225,9 +225,7 @@ class ContextBuilder:
                 section = getattr(ctx, section_name)
                 kept, cleared = [], []
                 for e in section.entries:
-                    is_runtime_file = (
-                        isinstance(e, FileEntry) and e.id in self._runtime_entry_ids
-                    )
+                    is_runtime_file = isinstance(e, FileEntry) and e.id in self._runtime_entry_ids
                     if isinstance(e, ImageEntry) or is_runtime_file:
                         cleared.append(e)
                     else:
@@ -588,6 +586,11 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         """
         Add a tool result to the message list.
 
+        For multimodal results (list of content blocks containing images),
+        the text portion goes into the tool result and the image is injected
+        as a follow-up user message.  This ensures compatibility with providers
+        that don't support images inside tool results.
+
         Args:
             messages: Current message list.
             tool_call_id: ID of the tool call.
@@ -598,14 +601,35 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         Returns:
             Updated message list.
         """
-        messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "name": tool_name,
-                "content": result,
-            }
-        )
+        if isinstance(result, list):
+            # Split multimodal content: text → tool result, images → user message
+            text_parts = [b["text"] for b in result if b.get("type") == "text"]
+            image_parts = [b for b in result if b.get("type") == "image_url"]
+
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "name": tool_name,
+                    "content": "\n".join(text_parts) or "(see image below)",
+                }
+            )
+            if image_parts:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": image_parts + [{"type": "text", "text": "[image from tool]"}],
+                    }
+                )
+        else:
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "name": tool_name,
+                    "content": result,
+                }
+            )
         return messages
 
     def add_assistant_message(
