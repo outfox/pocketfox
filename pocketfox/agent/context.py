@@ -598,7 +598,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
 
             result = encode_image_file(p)
             if result is None:
-                notes.append(f"(image {p.name} skipped: exceeds 5 MB limit)")
+                notes.append(f"(media {p.name} skipped: unsupported format or exceeds 5 MB limit)")
                 continue
             data_uri, _b64, _mime, reencoded = result
             if reencoded:

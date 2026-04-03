@@ -821,6 +821,9 @@ class TelegramChannel(BaseChannel):
         elif message.audio:
             media_file = message.audio
             media_type = "audio"
+        elif message.animation:
+            media_file = message.animation
+            media_type = "animation"
         elif message.document:
             media_file = message.document
             media_type = "file"
@@ -1029,6 +1032,7 @@ class TelegramChannel(BaseChannel):
 
         type_map = {
             "image": ".jpg",
+            "animation": ".mp4",
             "voice": ".ogg",
             "audio": ".mp3",
             "file": "",
