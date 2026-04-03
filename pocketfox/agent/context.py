@@ -498,6 +498,9 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
 
             # Inject kept image blocks into the conversation
             self._inject_image_blocks(messages, ctx)
+        else:
+            # Still include kept images in context snapshots (e.g. /context command)
+            self._append_image_blocks(messages, ctx)
 
         # Clear volatile sections now that we've used them
         ctx.step.clear()
@@ -541,6 +544,24 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         image_ack_msg: dict[str, Any] = {"role": "assistant", "content": "Noted."}
         messages.insert(-1, image_user_msg)
         messages.insert(-1, image_ack_msg)
+
+    def _append_image_blocks(self, messages: list[dict[str, Any]], ctx: Context) -> None:
+        """Append kept images at the end of the message list.
+
+        Used for context snapshots (e.g. /context command) where there is no
+        trailing user message to insert before.
+        """
+        image_entries = [e for e in ctx.topic.entries if isinstance(e, ImageEntry)]
+        if not image_entries:
+            return
+
+        image_blocks: list[dict[str, Any]] = []
+        for entry in image_entries:
+            image_blocks.extend(entry.compile_blocks())
+        image_blocks.append({"type": "text", "text": "[Kept images for reference]"})
+
+        messages.append({"role": "user", "content": image_blocks})
+        messages.append({"role": "assistant", "content": "Noted."})
 
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
         """Build user message content with optional base64-encoded images."""

@@ -296,6 +296,43 @@ class TestKeptImageInjection:
         ]
         assert len(img_blocks) == 2
 
+    def test_images_included_in_context_snapshot(self, tmp_path):
+        """Kept images should appear even when current_message is None (/context dump)."""
+        builder = ContextBuilder(tmp_path)
+        self._add_kept_image(builder, tmp_path)
+
+        messages = builder.build_messages(
+            history=[], current_message=None, channel="test", chat_id="1"
+        )
+
+        image_msgs = [
+            m for m in messages
+            if m["role"] == "user"
+            and isinstance(m.get("content"), list)
+            and any(
+                b.get("type") == "image_url"
+                for b in m["content"]
+                if isinstance(b, dict)
+            )
+        ]
+        assert len(image_msgs) == 1
+
+        # Should have assistant ack after
+        img_idx = messages.index(image_msgs[0])
+        assert messages[img_idx + 1]["role"] == "assistant"
+        assert messages[img_idx + 1]["content"] == "Noted."
+
+    def test_no_images_no_injection_in_snapshot(self, tmp_path):
+        """Without kept images, no extra messages in context snapshot."""
+        builder = ContextBuilder(tmp_path)
+
+        messages = builder.build_messages(
+            history=[], current_message=None, channel="test", chat_id="1"
+        )
+
+        user_msgs = [m for m in messages if m["role"] == "user"]
+        assert len(user_msgs) == 0
+
 
 # ---------------------------------------------------------------------------
 # clear_kept_images
