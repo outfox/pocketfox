@@ -300,21 +300,31 @@ This file stores important information that should persist across sessions.
 
 
 def _make_provider(config):
-    """Create LiteLLMProvider from config. Exits if no API key found."""
-    from pocketfox.providers.litellm_provider import LiteLLMProvider
-
+    """Create an LLM provider from config. Exits if no API key found."""
     p = config.get_provider()
     model = config.agents.defaults.model
-    if not (p and p.api_key) and not model.startswith("bedrock/"):
+    if not (p and p.api_key):
         console.print("[red]Error: No API key configured.[/red]")
-        console.print("Set one in .config/pocketfox/config.toml under providers section")
+        console.print("Set one in .config/pocketfox/config.toml under [providers.openrouter]")
         raise typer.Exit(1)
-    return LiteLLMProvider(
-        api_key=p.api_key if p else None,
-        api_base=config.get_api_base(),
+
+    api_base = config.get_api_base()
+    if api_base:
+        from pocketfox.providers.openai_compat_provider import OpenAICompatProvider
+
+        return OpenAICompatProvider(
+            api_key=p.api_key,
+            api_base=api_base,
+            default_model=model,
+            extra_headers=p.extra_headers,
+        )
+
+    from pocketfox.providers.openrouter_provider import OpenRouterProvider
+
+    return OpenRouterProvider(
+        api_key=p.api_key,
         default_model=model,
-        extra_headers=p.extra_headers if p else None,
-        provider_name=config.get_provider_name(),
+        extra_headers=p.extra_headers,
     )
 
 
@@ -1035,26 +1045,23 @@ def status():
     )
 
     if config_path.exists():
-        from pocketfox.providers.registry import PROVIDERS
-
         console.print(f"Model: {config.agents.defaults.model}")
 
-        # Check API keys from registry
-        for spec in PROVIDERS:
-            p = getattr(config.providers, spec.name, None)
-            if p is None:
-                continue
-            if spec.is_local:
-                # Local deployments show api_base instead of api_key
-                if p.api_base:
-                    console.print(f"{spec.label}: [green]✓ {p.api_base}[/green]")
-                else:
-                    console.print(f"{spec.label}: [dim]not set[/dim]")
-            else:
-                has_key = bool(p.api_key)
-                console.print(
-                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}"
-                )
+        # OpenRouter (primary)
+        or_key = bool(config.providers.openrouter.api_key)
+        console.print(
+            f"OpenRouter: {'[green]✓[/green]' if or_key else '[dim]not set[/dim]'}"
+        )
+
+        # OpenAI-compat (optional)
+        oc = config.providers.openai_compat
+        if oc.api_key or oc.api_base:
+            label = f"[green]✓ {oc.api_base}[/green]" if oc.api_base else "[green]✓[/green]"
+            console.print(f"OpenAI-Compat: {label}")
+
+        # Groq (transcription)
+        if config.providers.groq.api_key:
+            console.print("Groq (transcription): [green]✓[/green]")
 
 
 if __name__ == "__main__":

@@ -84,15 +84,25 @@ class PocketfoxNamespace:
     def provider(self):
         """Get an LLM provider instance."""
         if self._provider is None:
-            from pocketfox.providers.litellm_provider import LiteLLMProvider
-
             cfg = self.config
             p = cfg.get_provider()
-            self._provider = LiteLLMProvider(
-                api_key=p.api_key if p else None,
-                api_base=cfg.get_api_base(),
-                default_model=cfg.agents.defaults.model,
-            )
+            api_base = cfg.get_api_base()
+            model = cfg.agents.defaults.model
+            if api_base:
+                from pocketfox.providers.openai_compat_provider import OpenAICompatProvider
+
+                self._provider = OpenAICompatProvider(
+                    api_key=p.api_key if p else "",
+                    api_base=api_base,
+                    default_model=model,
+                )
+            else:
+                from pocketfox.providers.openrouter_provider import OpenRouterProvider
+
+                self._provider = OpenRouterProvider(
+                    api_key=p.api_key if p else "",
+                    default_model=model,
+                )
         return self._provider
 
     def reload(self) -> None:

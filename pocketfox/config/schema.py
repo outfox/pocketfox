@@ -83,7 +83,7 @@ class AgentDefaults(BaseModel):
     """Default agent configuration."""
 
     workspace: str = ""  # Empty = auto-resolved from PF_AGENT_NAME at runtime
-    model: str = "openrouter/claude-sonnet-4-6"
+    model: str = "anthropic/claude-sonnet-4-6"
     max_tokens: int = 8192
     temperature: float = 0.7
     max_tool_iterations: int = 20
@@ -121,19 +121,30 @@ class ProviderConfig(BaseModel):
 
 
 class ProvidersConfig(BaseModel):
-    """Configuration for LLM providers."""
+    """Configuration for LLM providers.
 
+    Primary: ``openrouter`` — routes to 300+ models via a single API key.
+    Fallback: ``openai_compat`` — for vLLM/local servers or custom gateways.
+
+    Legacy provider fields (anthropic, openai, deepseek, …) are kept for
+    backward-compatible config loading but are no longer used for routing.
+    If any have an api_key set, a deprecation warning is logged.
+    """
+
+    openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
+    openai_compat: ProviderConfig = Field(default_factory=ProviderConfig)
+    groq: ProviderConfig = Field(default_factory=ProviderConfig)  # Whisper transcription
+
+    # Legacy fields — kept so old config.toml files still load without error.
     anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
     openai: ProviderConfig = Field(default_factory=ProviderConfig)
-    openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
     deepseek: ProviderConfig = Field(default_factory=ProviderConfig)
-    groq: ProviderConfig = Field(default_factory=ProviderConfig)
     zhipu: ProviderConfig = Field(default_factory=ProviderConfig)
-    dashscope: ProviderConfig = Field(default_factory=ProviderConfig)  # 阿里云通义千问
+    dashscope: ProviderConfig = Field(default_factory=ProviderConfig)
     vllm: ProviderConfig = Field(default_factory=ProviderConfig)
     gemini: ProviderConfig = Field(default_factory=ProviderConfig)
     moonshot: ProviderConfig = Field(default_factory=ProviderConfig)
-    aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)  # AiHubMix API gateway
+    aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)
 
 
 class GatewayConfig(BaseModel):
@@ -235,56 +246,57 @@ class Config(BaseSettings):
             )
         }
 
+    _LEGACY_PROVIDERS = (
+        "anthropic", "openai", "deepseek", "zhipu",
+        "dashscope", "vllm", "gemini", "moonshot", "aihubmix",
+    )
+
     def _match_provider(
         self, model: str | None = None
     ) -> tuple["ProviderConfig | None", str | None]:
-        """Match provider config and its registry name. Returns (config, spec_name)."""
-        from pocketfox.providers.registry import PROVIDERS
+        """Match provider config and its name. Returns (config, provider_name).
 
-        model_lower = (model or self.agents.defaults.model).lower()
+        Priority: openrouter > openai_compat > legacy fields (with warning).
+        """
+        if self.providers.openrouter.api_key:
+            return self.providers.openrouter, "openrouter"
 
-        # Match by keyword (order follows PROVIDERS registry)
-        for spec in PROVIDERS:
-            p = getattr(self.providers, spec.name, None)
-            if p and any(kw in model_lower for kw in spec.keywords) and p.api_key:
-                return p, spec.name
+        if self.providers.openai_compat.api_key:
+            return self.providers.openai_compat, "openai_compat"
 
-        # Fallback: gateways first, then others (follows registry order)
-        for spec in PROVIDERS:
-            p = getattr(self.providers, spec.name, None)
+        # Check legacy fields and warn
+        for name in self._LEGACY_PROVIDERS:
+            p = getattr(self.providers, name, None)
             if p and p.api_key:
-                return p, spec.name
+                from loguru import logger
+                logger.warning(
+                    f"Provider '{name}' is deprecated — "
+                    f"migrate to [providers.openrouter] or [providers.openai_compat]"
+                )
+                return p, name
+
         return None, None
 
     def get_provider(self, model: str | None = None) -> ProviderConfig | None:
-        """Get matched provider config. Falls back to first available."""
+        """Get matched provider config."""
         p, _ = self._match_provider(model)
         return p
 
     def get_provider_name(self, model: str | None = None) -> str | None:
-        """Get the registry name of the matched provider (e.g. "deepseek", "openrouter")."""
+        """Get the name of the matched provider (e.g. "openrouter", "openai_compat")."""
         _, name = self._match_provider(model)
         return name
 
     def get_api_key(self, model: str | None = None) -> str | None:
-        """Get API key for the given model. Falls back to first available key."""
+        """Get API key for the matched provider."""
         p = self.get_provider(model)
         return p.api_key if p else None
 
     def get_api_base(self, model: str | None = None) -> str | None:
-        """Get API base URL for the given model. Applies default URLs for known gateways."""
-        from pocketfox.providers.registry import find_by_name
-
-        p, name = self._match_provider(model)
+        """Get API base URL for the matched provider."""
+        p, _ = self._match_provider(model)
         if p and p.api_base:
             return p.api_base
-        # Only gateways get a default api_base here. Standard providers
-        # (like Moonshot) set their base URL via env vars in _setup_env
-        # to avoid polluting the global litellm.api_base.
-        if name:
-            spec = find_by_name(name)
-            if spec and spec.is_gateway and spec.default_api_base:
-                return spec.default_api_base
         return None
 
     model_config = SettingsConfigDict(env_prefix="pf_", env_nested_delimiter="__")

@@ -73,8 +73,8 @@ class ImageEntry(Entry):
     def compile_blocks(self) -> list[dict[str, Any]]:
         """Return OpenAI-format multimodal content blocks.
 
-        Uses ``image_url`` with a data-URI so litellm can translate to
-        the provider's native format (Anthropic, OpenAI, etc.).
+        Uses ``image_url`` with a data-URI (OpenAI-compatible format
+        understood by OpenRouter, OpenAI, Anthropic, etc.).
         """
         data_uri = f"data:{self._mime_type};base64,{self._base64_data}"
         return [

@@ -380,46 +380,26 @@ Config file: `~/.pocketfox/config.toml`
 | `vllm` | LLM (local, any OpenAI-compatible server) | — |
 
 <details>
-<summary><b>Adding a New Provider (Developer Guide)</b></summary>
+<summary><b>Provider Architecture (Developer Guide)</b></summary>
 
-pocketfox uses a **Provider Registry** (`pocketfox/providers/registry.py`) as the single source of truth.
-Adding a new provider only takes **2 steps** — no if-elif chains to touch.
+All cloud models are accessed through **OpenRouter** (`pocketfox/providers/openrouter_provider.py`) — a single API key routes to 300+ models across Anthropic, OpenAI, DeepSeek, Gemini, and more.
 
-**Step 1.** Add a `ProviderSpec` entry to `PROVIDERS` in `pocketfox/providers/registry.py`:
+For local or custom OpenAI-compatible endpoints (vLLM, AiHubMix, etc.), use the **OpenAI-compat provider** (`pocketfox/providers/openai_compat_provider.py`).
 
-```python
-ProviderSpec(
-    name="myprovider",                   # config field name
-    keywords=("myprovider", "mymodel"),  # model-name keywords for auto-matching
-    env_key="MYPROVIDER_API_KEY",        # env var for LiteLLM
-    display_name="My Provider",          # shown in `pocketfox status`
-    litellm_prefix="myprovider",         # auto-prefix: model → myprovider/model
-    skip_prefixes=("myprovider/",),      # don't double-prefix
-)
+Both providers share a common response parser (`pocketfox/providers/response_parser.py`) and implement the `LLMProvider` ABC from `pocketfox/providers/base.py`.
+
+```toml
+# Primary: OpenRouter (cloud models)
+[providers.openrouter]
+api_key = "sk-or-v1-..."
+
+# Optional: local/custom OpenAI-compatible endpoint
+[providers.openai_compat]
+api_key = "..."
+api_base = "http://localhost:8000/v1"
 ```
 
-**Step 2.** Add a field to `ProvidersConfig` in `pocketfox/config/schema.py`:
-
-```python
-class ProvidersConfig(BaseModel):
-    ...
-    myprovider: ProviderConfig = ProviderConfig()
-```
-
-That's it! Environment variables, model prefixing, config matching, and `pocketfox status` display will all work automatically.
-
-**Common `ProviderSpec` options:**
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `litellm_prefix` | Auto-prefix model names for LiteLLM | `"dashscope"` → `dashscope/qwen-max` |
-| `skip_prefixes` | Don't prefix if model already starts with these | `("dashscope/", "openrouter/")` |
-| `env_extras` | Additional env vars to set | `(("ZHIPUAI_API_KEY", "{api_key}"),)` |
-| `model_overrides` | Per-model parameter overrides | `(("kimi-k2.5", {"temperature": 1.0}),)` |
-| `is_gateway` | Can route any model (like OpenRouter) | `True` |
-| `detect_by_key_prefix` | Detect gateway by API key prefix | `"sk-or-"` |
-| `detect_by_base_keyword` | Detect gateway by API base URL | `"openrouter"` |
-| `strip_model_prefix` | Strip existing prefix before re-prefixing | `True` (for AiHubMix) |
+Models use the `provider/model-name` format (e.g. `anthropic/claude-sonnet-4-6`, `deepseek/deepseek-chat`).
 
 </details>
 

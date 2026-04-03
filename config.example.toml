@@ -5,16 +5,17 @@
 
 [providers.openrouter]
 api_key = "${OPENROUTER_API_KEY}"
-api_base = "https://openrouter.ai/api/v1"
 
-[providers.anthropic]
-api_key = "${ANTHROPIC_API_KEY}"
+# Optional: for local/custom OpenAI-compatible endpoints (vLLM, etc.)
+# [providers.openai_compat]
+# api_key = "..."
+# api_base = "http://localhost:8000/v1"
 
 [providers.groq]
-api_key = "${GROQ_API_KEY}"
+api_key = "${GROQ_API_KEY}"  # Used for Whisper voice transcription
 
 [agents.defaults]
-model = "openrouter/anthropic/claude-sonnet-4-5"
+model = "anthropic/claude-sonnet-4-6"
 # context_files = ["AGENTS.md", "TOOLS.md"]  # Default files for synthesized context
 
 [tools]
