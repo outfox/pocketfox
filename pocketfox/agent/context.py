@@ -571,19 +571,31 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         messages.append({"role": "user", "content": image_blocks})
         messages.append({"role": "assistant", "content": "Noted."})
 
+    # Video extensions that should be encoded as video_url content blocks
+    _VIDEO_SUFFIXES: ClassVar[set[str]] = {".mp4", ".webm", ".mov", ".avi"}
+
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images."""
+        """Build user message content with optional base64-encoded images/videos."""
         if not media:
             return text
 
         from pocketfox.utils.image import encode_image_file
 
-        images = []
+        media_blocks: list[dict[str, Any]] = []
         notes: list[str] = []
         for path in media:
             p = Path(path)
             if not p.is_file():
                 continue
+
+            if p.suffix.lower() in self._VIDEO_SUFFIXES:
+                block = self._encode_video_block(p)
+                if block:
+                    media_blocks.append(block)
+                else:
+                    notes.append(f"(video {p.name} skipped: exceeds size limit or unreadable)")
+                continue
+
             result = encode_image_file(p)
             if result is None:
                 notes.append(f"(image {p.name} skipped: exceeds 5 MB limit)")
@@ -591,7 +603,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             data_uri, _b64, _mime, reencoded = result
             if reencoded:
                 notes.append(f"(image {p.name} re-encoded to jpeg)")
-            images.append(
+            media_blocks.append(
                 {
                     "type": "image_url",
                     "image_url": {"url": data_uri},
@@ -601,9 +613,34 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         if notes:
             text = text + "\n" + "\n".join(notes) if text else "\n".join(notes)
 
-        if not images:
+        if not media_blocks:
             return text
-        return images + [{"type": "text", "text": text}]
+        return media_blocks + [{"type": "text", "text": text}]
+
+    @staticmethod
+    def _encode_video_block(path: Path) -> dict[str, Any] | None:
+        """Encode a video file as a base64 video_url content block."""
+        import base64
+        import mimetypes as mt
+
+        max_bytes = 20 * 1024 * 1024  # 20 MB limit for video
+        raw = path.read_bytes()
+        if len(raw) > max_bytes:
+            logger.warning(
+                f"Video {path.name} too large "
+                f"({len(raw) / 1024 / 1024:.1f} MB > 20 MB)"
+            )
+            return None
+        mime, _ = mt.guess_type(str(path))
+        if not mime:
+            _fallback = {".mp4": "video/mp4", ".webm": "video/webm",
+                         ".mov": "video/quicktime", ".avi": "video/x-msvideo"}
+            mime = _fallback.get(path.suffix.lower(), "video/mp4")
+        b64 = base64.b64encode(raw).decode("ascii")
+        return {
+            "type": "video_url",
+            "video_url": {"url": f"data:{mime};base64,{b64}"},
+        }
 
     def add_tool_result(
         self,

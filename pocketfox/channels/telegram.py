@@ -853,13 +853,14 @@ class TelegramChannel(BaseChannel):
                     else:
                         content_parts.append(f"[{media_type}: {file_path}]")
                 elif media_type == "sticker_video":
-                    # Extract first frame so the LLM can see video stickers
-                    thumb_path = file_path.with_suffix(".jpg")
-                    thumb = await self._extract_video_frame(file_path, thumb_path)
-                    if thumb:
-                        media_paths.append(str(thumb))
-                        content_parts.append(f"[sticker_video: {file_path}]")
+                    # Transcode .webm sticker to .mp4 for broader LLM compatibility
+                    mp4_path = file_path.with_suffix(".mp4")
+                    transcoded = await self._transcode_video(file_path, mp4_path)
+                    if transcoded:
+                        media_paths.append(str(transcoded))
+                        content_parts.append(f"[sticker_video: {transcoded}]")
                     else:
+                        # Fallback: pass original .webm
                         media_paths.append(str(file_path))
                         content_parts.append(f"[sticker_video: {file_path}]")
                 else:
@@ -1028,8 +1029,8 @@ class TelegramChannel(BaseChannel):
         return type_map.get(media_type, "")
 
     @staticmethod
-    async def _extract_video_frame(video_path: Path, out_path: Path) -> Path | None:
-        """Extract the first frame of a video file as JPEG using ffmpeg.
+    async def _transcode_video(src, dst):
+        """Transcode a video file to MP4 (H.264/AAC) using ffmpeg.
 
         Returns the output path on success, or None on failure.
         """
@@ -1038,23 +1039,25 @@ class TelegramChannel(BaseChannel):
 
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
-            logger.debug("ffmpeg not found, cannot extract video frame")
+            logger.debug("ffmpeg not found, cannot transcode video")
             return None
         try:
             proc = await _aio.create_subprocess_exec(
                 ffmpeg,
-                "-i", str(video_path),
-                "-frames:v", "1",
+                "-i", str(src),
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-movflags", "+faststart",
                 "-y",
-                str(out_path),
+                str(dst),
                 stdout=_aio.subprocess.DEVNULL,
                 stderr=_aio.subprocess.PIPE,
             )
             _, stderr = await proc.communicate()
-            if proc.returncode == 0 and out_path.exists():
-                logger.debug(f"Extracted video frame to {out_path}")
-                return out_path
-            logger.warning(f"ffmpeg frame extraction failed: {stderr.decode()[:200]}")
+            if proc.returncode == 0 and dst.exists():
+                logger.debug(f"Transcoded video to {dst}")
+                return dst
+            logger.warning(f"ffmpeg transcode failed: {stderr.decode()[:200]}")
         except Exception as e:
-            logger.warning(f"Video frame extraction error: {e}")
+            logger.warning(f"Video transcode error: {e}")
         return None
