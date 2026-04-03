@@ -74,11 +74,49 @@ class OpenRouterProvider(LLMProvider):
             result = await self._client.chat.send_async(**kwargs)
             return self._parse_response(result)
         except Exception as e:
+            err = str(e)
+            # OpenRouter may reject media types the model doesn't advertise.
+            # Retry without those blocks so the bot still responds.
+            if "support input video" in err or "support input audio" in err:
+                logger.warning(f"Retrying without unsupported media: {err}")
+                kwargs["messages"] = self._strip_media_blocks(messages)
+                try:
+                    result = await self._client.chat.send_async(**kwargs)
+                    return self._parse_response(result)
+                except Exception as retry_err:
+                    logger.error(f"OpenRouter API error (retry): {retry_err}")
+                    return LLMResponse(
+                        content=f"Error calling LLM: {retry_err}",
+                        finish_reason="error",
+                    )
             logger.error(f"OpenRouter API error: {e}")
             return LLMResponse(
                 content=f"Error calling LLM: {e}",
                 finish_reason="error",
             )
+
+    @staticmethod
+    def _strip_media_blocks(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Remove video_url / input_audio blocks, keep text and images."""
+        _strip_types = {"video_url", "input_audio"}
+        out = []
+        for msg in messages:
+            content = msg.get("content")
+            if not isinstance(content, list):
+                out.append(msg)
+                continue
+            filtered = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") in _strip_types:
+                    media_type = block["type"].replace("_", " ")
+                    filtered.append({
+                        "type": "text",
+                        "text": f"({media_type} attachment — not supported by current model)",
+                    })
+                else:
+                    filtered.append(block)
+            out.append({**msg, "content": filtered})
+        return out
 
     @staticmethod
     def _parse_response(result: Any) -> LLMResponse:
