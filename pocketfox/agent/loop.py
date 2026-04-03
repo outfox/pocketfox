@@ -212,8 +212,13 @@ class AgentLoop:
         self, msg: InboundMessage, context_name: str
     ) -> list[OutboundMessage]:
         """Process a message within a specific context. Returns outbound messages."""
+        ctx_cfg = self.router.get_config(context_name)
+        ctx_model = ctx_cfg.model
+
         # Set task-local context for tools
-        tc = TaskContext(context_name=context_name, channel=msg.channel, chat_id=msg.chat_id)
+        tc = TaskContext(
+            context_name=context_name, channel=msg.channel, chat_id=msg.chat_id, model=ctx_model
+        )
         current_task.set(tc)
 
         context_files = tuple(self.router.get_context_files(context_name))
@@ -236,7 +241,7 @@ class AgentLoop:
         )
 
         # Run the LLM loop
-        final_content = await self._run_llm_loop(messages, session)
+        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
         # LLM error — don't save to session
         if self._is_llm_error(final_content):
@@ -268,6 +273,7 @@ class AgentLoop:
         self,
         messages: list[dict],
         session: SessionManager | object | None = None,
+        model: str | None = None,
     ) -> str | None:
         """Run the iterative LLM + tool execution loop.
 
@@ -281,7 +287,7 @@ class AgentLoop:
             response = await self.provider.chat(
                 messages=messages,
                 tools=self.tools.get_definitions(),
-                model=self.model,
+                model=model or self.model,
                 max_tokens=self.max_tokens,
             )
 
@@ -373,7 +379,12 @@ class AgentLoop:
 
         # Set task context for tools
         context_name = msg.context_name or "default"
-        tc = TaskContext(context_name=context_name, channel=msg.channel, chat_id=msg.chat_id)
+        ctx_model = None
+        if self.router and self.router.has_context(context_name):
+            ctx_model = self.router.get_config(context_name).model
+        tc = TaskContext(
+            context_name=context_name, channel=msg.channel, chat_id=msg.chat_id, model=ctx_model
+        )
         current_task.set(tc)
 
         session = self.sessions.get_or_create(msg.session_key)
@@ -388,7 +399,7 @@ class AgentLoop:
             context_name=context_name,
         )
 
-        final_content = await self._run_llm_loop(messages, session)
+        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
         # LLM error — return error directly without saving to session
         if self._is_llm_error(final_content):
@@ -429,16 +440,21 @@ class AgentLoop:
             origin_channel = "cli"
             origin_chat_id = msg.chat_id
 
-        # Set task context
-        tc = TaskContext(
-            context_name=origin_context, channel=origin_channel, chat_id=origin_chat_id
-        )
-        current_task.set(tc)
-
-        # Resolve context files if router available
+        # Resolve context model and files if router available
+        ctx_model = None
         context_files = None
         if self.router and self.router.has_context(origin_context):
+            ctx_model = self.router.get_config(origin_context).model
             context_files = tuple(self.router.get_context_files(origin_context))
+
+        # Set task context
+        tc = TaskContext(
+            context_name=origin_context,
+            channel=origin_channel,
+            chat_id=origin_chat_id,
+            model=ctx_model,
+        )
+        current_task.set(tc)
 
         # Build session key
         if self.router:
@@ -456,7 +472,7 @@ class AgentLoop:
             context_files=context_files,
         )
 
-        final_content = await self._run_llm_loop(messages, session)
+        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
         if self._is_llm_error(final_content):
             error_text = self._strip_error_prefix(final_content)

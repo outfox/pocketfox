@@ -59,4 +59,5 @@ class SpawnTool(Tool):
             origin_channel=tc.channel,
             origin_chat_id=tc.chat_id,
             origin_context_name=tc.context_name,
+            model=tc.model,
         )

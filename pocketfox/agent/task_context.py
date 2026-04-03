@@ -13,6 +13,7 @@ class TaskContext:
     context_name: str
     channel: str
     chat_id: str
+    model: str | None = None
 
 
 current_task: ContextVar[TaskContext | None] = ContextVar("task_context", default=None)
