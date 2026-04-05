@@ -113,13 +113,15 @@ class TestLLMErrorHandling:
         provider = FakeProvider([_error_response()])
         loop = await _make_loop(tmp_path, provider)
 
+        session = loop.sessions.get_or_create("telegram:123")
+        msgs_before = len(session.messages)
+
         result = await loop.process_direct("hi", session_key="telegram:123")
         assert "error" in result.lower()
 
-        session = loop.sessions.get_or_create("telegram:123")
-        # User message stays, no assistant message saved
-        assert len(session.messages) == 1
-        assert session.messages[0]["role"] == "user"
+        # User message stays (+1), no assistant message saved
+        assert len(session.messages) == msgs_before + 1
+        assert session.messages[-1]["role"] == "user"
 
     @pytest.mark.asyncio
     async def test_context_usable_after_error(self, tmp_path):
@@ -146,13 +148,15 @@ class TestLLMErrorHandling:
         loop.tools._tools["read_file"] = dummy_tool
         loop.tools.redact_params = MagicMock(return_value={"path": "/tmp/x"})
 
+        session = loop.sessions.get_or_create("telegram:tool_err")
+        msgs_before = len(session.messages)
+
         resp = await loop.process_direct("read it", session_key="telegram:tool_err")
         assert "error" in resp.lower()
 
-        session = loop.sessions.get_or_create("telegram:tool_err")
-        # User message persists, no assistant message
-        assert len(session.messages) == 1
-        assert session.messages[0]["role"] == "user"
+        # User message persists (+1), no assistant message
+        assert len(session.messages) == msgs_before + 1
+        assert session.messages[-1]["role"] == "user"
 
     @pytest.mark.asyncio
     async def test_error_message_includes_details(self, tmp_path):
@@ -416,12 +420,14 @@ class TestProcessDirectErrors:
         provider = FakeProvider([_error_response()])
         loop = await _make_loop(tmp_path, provider)
 
+        session = loop.sessions.get_or_create("test:direct")
+        msgs_before = len(session.messages)
+
         await loop.process_direct("hello", session_key="test:direct")
 
-        session = loop.sessions.get_or_create("test:direct")
-        # User message persists, no assistant message
-        assert len(session.messages) == 1
-        assert session.messages[0]["role"] == "user"
+        # User message persists (+1), no assistant message
+        assert len(session.messages) == msgs_before + 1
+        assert session.messages[-1]["role"] == "user"
 
 
 # ---------------------------------------------------------------------------
@@ -916,6 +922,9 @@ class TestTurnQueuing:
         provider = FakeProvider([_ok_response("batch reply")])
         loop = await _make_loop(tmp_path, provider)
 
+        session = loop.sessions.get_or_create("telegram:42")
+        msgs_before = len(session.messages)
+
         # Publish multiple messages before starting the loop
         for text in ["msg1", "msg2", "msg3"]:
             await loop.bus.publish_inbound(
@@ -931,9 +940,9 @@ class TestTurnQueuing:
         asyncio.create_task(stop_after())
         await loop.run()
 
-        # All three messages should be in the session
-        session = loop.sessions.get_or_create("telegram:42")
-        user_msgs = [m for m in session.messages if m["role"] == "user"]
+        # 3 new user messages + 1 assistant reply
+        new_msgs = session.messages[msgs_before:]
+        user_msgs = [m for m in new_msgs if m["role"] == "user"]
         assert len(user_msgs) == 3
 
         # Provider should have been called once (one turn, not three)
@@ -945,11 +954,13 @@ class TestTurnQueuing:
         provider = FakeProvider([_ok_response()])
         loop = await _make_loop(tmp_path, provider)
 
+        session = loop.sessions.get_or_create("telegram:99")
+        msgs_before = len(session.messages)
+
         msg = InboundMessage(
             channel="telegram", sender_id="u1", chat_id="99", content="saved"
         )
         loop._ingest_message(msg)
 
-        session = loop.sessions.get_or_create("telegram:99")
-        assert len(session.messages) == 1
-        assert session.messages[0]["content"] == "saved"
+        assert len(session.messages) == msgs_before + 1
+        assert session.messages[-1]["content"] == "saved"
