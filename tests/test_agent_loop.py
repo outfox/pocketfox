@@ -964,3 +964,267 @@ class TestTurnQueuing:
 
         assert len(session.messages) == msgs_before + 1
         assert session.messages[-1]["content"] == "saved"
+
+
+# ---------------------------------------------------------------------------
+# Multi-context routing
+# ---------------------------------------------------------------------------
+
+
+async def _make_routed_loop(tmp_path: Path, provider: FakeProvider, contexts: dict):
+    """Create an AgentLoop with a ContextRouter from a context dict."""
+    from pocketfox.agent.router import ContextRouter
+    from pocketfox.config.schema import ContextConfig, ExecToolConfig, VoiceToolConfig
+
+    ctx_configs = {name: ContextConfig(**cfg) for name, cfg in contexts.items()}
+    router = ContextRouter(ctx_configs)
+    bus = MessageBus()
+    sm = SessionManager(tmp_path)
+    loop = AgentLoop(
+        bus=bus,
+        provider=provider,
+        workspace=tmp_path,
+        model="fake/model",
+        router=router,
+        session_manager=sm,
+        exec_config=ExecToolConfig(),
+        voice_config=VoiceToolConfig(),
+    )
+    return loop
+
+
+class TestMultiContextRouting:
+    """Verify one inbound message fans out to multiple contexts."""
+
+    @pytest.mark.asyncio
+    async def test_fan_out_to_multiple_contexts(self, tmp_path):
+        """A message matching two contexts should create two separate sessions."""
+        provider = FakeProvider([_ok_response("reply A"), _ok_response("reply B")])
+        loop = await _make_routed_loop(tmp_path, provider, {
+            "ctx_a": {"inputs": ["telegram:*"], "outputs_responsive": ["telegram:*"]},
+            "ctx_b": {"inputs": ["telegram:*"], "outputs_responsive": ["telegram:*"]},
+        })
+
+        msg = InboundMessage(
+            channel="telegram", sender_id="u1", chat_id="500", content="hello both"
+        )
+        loop._ingest_message(msg)
+
+        # Both contexts should have the message in separate sessions
+        sess_a = loop.sessions.get_or_create("ctx_a:telegram:500")
+        sess_b = loop.sessions.get_or_create("ctx_b:telegram:500")
+        assert sess_a.messages[-1]["content"] == "hello both"
+        assert sess_b.messages[-1]["content"] == "hello both"
+
+        # Both contexts should have pending turns
+        assert "ctx_a:telegram:500" in loop._ctx_meta["ctx_a"]
+        assert "ctx_b:telegram:500" in loop._ctx_meta["ctx_b"]
+
+    @pytest.mark.asyncio
+    async def test_contexts_run_independently(self, tmp_path):
+        """Two contexts process turns in parallel without blocking each other."""
+        call_order = []
+        turn_count = {"ctx_a": 0, "ctx_b": 0}
+
+        # ctx_a will be slow, ctx_b will be fast
+        slow_event = asyncio.Event()
+
+        provider = FakeProvider([_ok_response("fast"), _ok_response("slow")])
+        loop = await _make_routed_loop(tmp_path, provider, {
+            "ctx_a": {"inputs": ["telegram:100"]},
+            "ctx_b": {"inputs": ["telegram:200"]},
+        })
+
+        original_run_turn = loop._run_session_turn
+
+        async def tracked_turn(session_key, meta):
+            ctx = meta["context_name"]
+            call_order.append(f"{ctx}_start")
+            if ctx == "ctx_a":
+                # Simulate slow processing
+                await asyncio.sleep(0.3)
+            result = await original_run_turn(session_key, meta)
+            call_order.append(f"{ctx}_end")
+            turn_count[ctx] += 1
+            return result
+
+        loop._run_session_turn = tracked_turn
+
+        # Publish messages to both contexts
+        await loop.bus.publish_inbound(
+            InboundMessage(channel="telegram", sender_id="u1", chat_id="100", content="slow msg")
+        )
+        await loop.bus.publish_inbound(
+            InboundMessage(channel="telegram", sender_id="u1", chat_id="200", content="fast msg")
+        )
+
+        async def stop_after():
+            await asyncio.sleep(1.0)
+            loop.stop()
+
+        asyncio.create_task(stop_after())
+        await loop.run()
+
+        # Both contexts should have completed
+        assert turn_count["ctx_a"] == 1
+        assert turn_count["ctx_b"] == 1
+
+        # ctx_b should have started before ctx_a ended (parallel execution)
+        assert "ctx_b_start" in call_order
+        assert "ctx_a_end" in call_order
+        b_start = call_order.index("ctx_b_start")
+        a_end = call_order.index("ctx_a_end")
+        assert b_start < a_end, f"ctx_b should start before ctx_a ends: {call_order}"
+
+
+# ---------------------------------------------------------------------------
+# System message ingestion
+# ---------------------------------------------------------------------------
+
+
+class TestSystemMessageIngestion:
+    """Verify system messages (subagent announces) are routed correctly."""
+
+    @pytest.mark.asyncio
+    async def test_system_message_parsed_and_saved(self, tmp_path):
+        """A system message with ctx:channel:chat_id format saves to the right session."""
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        msg = InboundMessage(
+            channel="system",
+            sender_id="subagent",
+            chat_id="default:telegram:42",
+            content="Task completed: weather is sunny",
+        )
+
+        session = loop.sessions.get_or_create("telegram:42")
+        msgs_before = len(session.messages)
+
+        loop._ingest_message(msg)
+
+        # Should be saved with [System: subagent] prefix
+        assert len(session.messages) == msgs_before + 1
+        assert session.messages[-1]["role"] == "user"
+        assert "[System: subagent]" in session.messages[-1]["content"]
+        assert "weather is sunny" in session.messages[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_system_message_queues_turn_in_correct_context(self, tmp_path):
+        """System message routes to the origin context's turn loop."""
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_routed_loop(tmp_path, provider, {
+            "myctx": {"inputs": ["telegram:*"]},
+        })
+
+        msg = InboundMessage(
+            channel="system",
+            sender_id="subagent",
+            chat_id="myctx:telegram:77",
+            content="Background task done",
+        )
+        loop._ingest_message(msg)
+
+        # Turn should be queued in "myctx" context
+        assert "myctx:telegram:77" in loop._ctx_meta["myctx"]
+
+    @pytest.mark.asyncio
+    async def test_system_message_two_part_format(self, tmp_path):
+        """A system message with channel:chat_id format (no context) defaults to 'default'."""
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        msg = InboundMessage(
+            channel="system",
+            sender_id="subagent",
+            chat_id="cli:direct",
+            content="Done",
+        )
+
+        session = loop.sessions.get_or_create("cli:direct")
+        msgs_before = len(session.messages)
+
+        loop._ingest_message(msg)
+
+        assert len(session.messages) == msgs_before + 1
+        # Should queue in "default" context
+        assert "cli:direct" in loop._ctx_meta["default"]
+
+
+# ---------------------------------------------------------------------------
+# Follow-up turns (messages during in-progress turn)
+# ---------------------------------------------------------------------------
+
+
+class TestFollowUpTurns:
+    """Verify messages arriving between turns trigger follow-up turns."""
+
+    @pytest.mark.asyncio
+    async def test_message_after_turn_triggers_followup(self, tmp_path):
+        """A message published after a turn completes should trigger a second turn."""
+
+        class DelayedInjectProvider(FakeProvider):
+            """Provider that signals when the first LLM call completes."""
+
+            def __init__(self, responses, bus):
+                super().__init__(responses)
+                self._bus = bus
+                self.first_call_done = asyncio.Event()
+
+            async def chat(self, **kwargs):
+                result = await super().chat(**kwargs)
+                if self._call_count == 1:
+                    self.first_call_done.set()
+                return result
+
+        from pocketfox.config.schema import ExecToolConfig, VoiceToolConfig
+
+        bus = MessageBus()
+        provider = DelayedInjectProvider(
+            [_ok_response("first reply"), _ok_response("second reply")], bus
+        )
+        loop = AgentLoop(
+            bus=bus,
+            provider=provider,
+            workspace=tmp_path,
+            model="fake/model",
+            session_manager=SessionManager(tmp_path),
+            exec_config=ExecToolConfig(),
+            voice_config=VoiceToolConfig(),
+        )
+
+        # Publish the initial message
+        await bus.publish_inbound(
+            InboundMessage(
+                channel="telegram", sender_id="u1",
+                chat_id="300", content="initial msg",
+            )
+        )
+
+        async def inject_after_first_turn():
+            await provider.first_call_done.wait()
+            # Small delay to let the assistant response save
+            await asyncio.sleep(0.15)
+            await bus.publish_inbound(
+                InboundMessage(
+                    channel="telegram", sender_id="u1",
+                    chat_id="300", content="followup msg",
+                )
+            )
+
+        async def stop_after():
+            await asyncio.sleep(2.0)
+            loop.stop()
+
+        asyncio.create_task(inject_after_first_turn())
+        asyncio.create_task(stop_after())
+        await loop.run()
+
+        # Provider should have been called twice (two separate turns)
+        assert provider._call_count == 2
+
+        # Session should have both user messages and both assistant replies
+        session = loop.sessions.get_or_create("telegram:300")
+        recent = session.messages[-4:]
+        roles = [m["role"] for m in recent]
+        assert roles == ["user", "assistant", "user", "assistant"]
