@@ -96,14 +96,10 @@ class TestLLMErrorHandling:
         provider = FakeProvider([_error_response()])
         loop = await _make_loop(tmp_path, provider)
 
-        msg = InboundMessage(
-            channel="telegram", sender_id="u1", chat_id="123", content="hi"
-        )
-        response = await loop._process_message(msg)
+        result = await loop.process_direct("hi", session_key="telegram:123")
 
-        # The error should be communicated to the user
-        assert response is not None
-        assert "error" in response.content.lower()
+        # The error should be communicated to the caller
+        assert "error" in result.lower()
 
         # Session must NOT contain the error as an assistant message
         session = loop.sessions.get_or_create("telegram:123")
@@ -112,20 +108,18 @@ class TestLLMErrorHandling:
             assert "Error calling LLM" not in m["content"]
 
     @pytest.mark.asyncio
-    async def test_session_clean_after_error(self, tmp_path):
-        """Session history should be unchanged after an LLM error."""
+    async def test_session_keeps_user_msg_after_error(self, tmp_path):
+        """User message persists in session after an LLM error (no rollback)."""
         provider = FakeProvider([_error_response()])
         loop = await _make_loop(tmp_path, provider)
 
+        result = await loop.process_direct("hi", session_key="telegram:123")
+        assert "error" in result.lower()
+
         session = loop.sessions.get_or_create("telegram:123")
-        msgs_before = len(session.messages)
-
-        msg = InboundMessage(
-            channel="telegram", sender_id="u1", chat_id="123", content="hi"
-        )
-        await loop._process_message(msg)
-
-        assert len(session.messages) == msgs_before
+        # User message stays, no assistant message saved
+        assert len(session.messages) == 1
+        assert session.messages[0]["role"] == "user"
 
     @pytest.mark.asyncio
     async def test_context_usable_after_error(self, tmp_path):
@@ -133,21 +127,15 @@ class TestLLMErrorHandling:
         provider = FakeProvider([_error_response(), _ok_response("recovered!")])
         loop = await _make_loop(tmp_path, provider)
 
-        msg1 = InboundMessage(
-            channel="telegram", sender_id="u1", chat_id="123", content="first"
-        )
-        resp1 = await loop._process_message(msg1)
-        assert "error" in resp1.content.lower()
+        resp1 = await loop.process_direct("first", session_key="telegram:123")
+        assert "error" in resp1.lower()
 
-        msg2 = InboundMessage(
-            channel="telegram", sender_id="u1", chat_id="123", content="second"
-        )
-        resp2 = await loop._process_message(msg2)
-        assert resp2.content == "recovered!"
+        resp2 = await loop.process_direct("second", session_key="telegram:123")
+        assert resp2 == "recovered!"
 
     @pytest.mark.asyncio
-    async def test_error_during_tool_loop_does_not_save(self, tmp_path):
-        """If the LLM fails on iteration 2 (after tool call), session stays clean."""
+    async def test_error_during_tool_loop_keeps_user_msg(self, tmp_path):
+        """If the LLM fails after tool call, user message persists but no assistant msg."""
         provider = FakeProvider([_tool_response(), _error_response()])
         loop = await _make_loop(tmp_path, provider)
 
@@ -158,14 +146,13 @@ class TestLLMErrorHandling:
         loop.tools._tools["read_file"] = dummy_tool
         loop.tools.redact_params = MagicMock(return_value={"path": "/tmp/x"})
 
-        msg = InboundMessage(
-            channel="telegram", sender_id="u1", chat_id="tool_err", content="read it"
-        )
-        resp = await loop._process_message(msg)
-        assert "error" in resp.content.lower()
+        resp = await loop.process_direct("read it", session_key="telegram:tool_err")
+        assert "error" in resp.lower()
 
         session = loop.sessions.get_or_create("telegram:tool_err")
-        assert len(session.messages) == 0
+        # User message persists, no assistant message
+        assert len(session.messages) == 1
+        assert session.messages[0]["role"] == "user"
 
     @pytest.mark.asyncio
     async def test_error_message_includes_details(self, tmp_path):
@@ -175,14 +162,11 @@ class TestLLMErrorHandling:
         )
         loop = await _make_loop(tmp_path, provider)
 
-        msg = InboundMessage(
-            channel="telegram", sender_id="u1", chat_id="123", content="hi"
-        )
-        resp = await loop._process_message(msg)
+        resp = await loop.process_direct("hi", session_key="telegram:123")
 
         # Should contain a user-friendly message and the raw error detail
-        assert "error" in resp.content.lower()
-        assert "PermissionDeniedError" in resp.content or "details" in resp.content.lower()
+        assert "error" in resp.lower()
+        assert "PermissionDeniedError" in resp or "details" in resp.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -427,15 +411,17 @@ class TestProcessDirectErrors:
         assert "error" in result.lower()
 
     @pytest.mark.asyncio
-    async def test_process_direct_error_does_not_save(self, tmp_path):
-        """process_direct should not persist error responses to session."""
+    async def test_process_direct_error_keeps_user_msg(self, tmp_path):
+        """process_direct keeps user message on error, but no assistant message."""
         provider = FakeProvider([_error_response()])
         loop = await _make_loop(tmp_path, provider)
 
         await loop.process_direct("hello", session_key="test:direct")
 
         session = loop.sessions.get_or_create("test:direct")
-        assert len(session.messages) == 0
+        # User message persists, no assistant message
+        assert len(session.messages) == 1
+        assert session.messages[0]["role"] == "user"
 
 
 # ---------------------------------------------------------------------------
@@ -448,15 +434,17 @@ class TestRunErrorDelivery:
 
     @pytest.mark.asyncio
     async def test_run_delivers_error_on_exception(self, tmp_path):
-        """If _process_message raises, run() should still deliver an error message."""
+        """If _run_session_turn raises, the turn loop should deliver an error message."""
         provider = FakeProvider([])
         loop = await _make_loop(tmp_path, provider)
 
-        # Make _process_message raise
-        async def exploding_process(msg):
+        # Make _run_session_turn raise
+        original_run_turn = loop._run_session_turn
+
+        async def exploding_turn(session_key, meta):
             raise RuntimeError("kaboom")
 
-        loop._process_message = exploding_process
+        loop._run_session_turn = exploding_turn
 
         # Publish an inbound message
         await loop.bus.publish_inbound(
@@ -467,7 +455,7 @@ class TestRunErrorDelivery:
         loop._running = True
 
         async def stop_after_delivery():
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.3)
             loop.stop()
 
         asyncio.create_task(stop_after_delivery())
@@ -782,3 +770,200 @@ class TestFileEntryLiveReload:
         )
         assert "updated" in str(msgs2)
         assert "initial" not in str(msgs2)
+
+
+# ---------------------------------------------------------------------------
+# _merge_consecutive
+# ---------------------------------------------------------------------------
+
+
+class TestMergeConsecutive:
+    """Tests for AgentLoop._merge_consecutive."""
+
+    def test_empty(self):
+        from pocketfox.agent.loop import AgentLoop
+
+        assert AgentLoop._merge_consecutive([]) == []
+
+    def test_already_alternating(self):
+        from pocketfox.agent.loop import AgentLoop
+
+        history = [
+            {"role": "user", "content": "a"},
+            {"role": "assistant", "content": "b"},
+            {"role": "user", "content": "c"},
+        ]
+        merged = AgentLoop._merge_consecutive(history)
+        assert len(merged) == 3
+        assert merged[0]["content"] == "a"
+
+    def test_consecutive_user_messages(self):
+        from pocketfox.agent.loop import AgentLoop
+
+        history = [
+            {"role": "user", "content": "hello"},
+            {"role": "user", "content": "world"},
+            {"role": "user", "content": "!"},
+        ]
+        merged = AgentLoop._merge_consecutive(history)
+        assert len(merged) == 1
+        assert merged[0]["content"] == "hello\n\nworld\n\n!"
+
+    def test_merge_preserves_media(self):
+        from pocketfox.agent.loop import AgentLoop
+
+        history = [
+            {"role": "user", "content": "a", "media": ["/img1.png"]},
+            {"role": "user", "content": "b", "media": ["/img2.png"]},
+        ]
+        merged = AgentLoop._merge_consecutive(history)
+        assert len(merged) == 1
+        assert merged[0]["media"] == ["/img1.png", "/img2.png"]
+
+    def test_merge_media_first_has_none(self):
+        from pocketfox.agent.loop import AgentLoop
+
+        history = [
+            {"role": "user", "content": "text only"},
+            {"role": "user", "content": "with img", "media": ["/img.png"]},
+        ]
+        merged = AgentLoop._merge_consecutive(history)
+        assert len(merged) == 1
+        assert merged[0]["media"] == ["/img.png"]
+
+    def test_does_not_mutate_input(self):
+        from pocketfox.agent.loop import AgentLoop
+
+        history = [
+            {"role": "user", "content": "a"},
+            {"role": "user", "content": "b"},
+        ]
+        AgentLoop._merge_consecutive(history)
+        assert history[0]["content"] == "a"
+        assert history[1]["content"] == "b"
+
+
+# ---------------------------------------------------------------------------
+# _prepare_turn_messages
+# ---------------------------------------------------------------------------
+
+
+class TestPrepareTurnMessages:
+    """Tests for AgentLoop._prepare_turn_messages."""
+
+    @pytest.mark.asyncio
+    async def test_single_user_message(self, tmp_path):
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        session = loop.sessions.get_or_create("test:1")
+        session.add_message("user", "hello")
+
+        history, content, media = loop._prepare_turn_messages(session)
+        assert history == []
+        assert content == "hello"
+        assert media is None
+
+    @pytest.mark.asyncio
+    async def test_multiple_user_messages_batched(self, tmp_path):
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        session = loop.sessions.get_or_create("test:1")
+        session.add_message("user", "msg1")
+        session.add_message("user", "msg2")
+        session.add_message("user", "msg3")
+
+        history, content, media = loop._prepare_turn_messages(session)
+        assert history == []
+        assert content == "msg1\n\nmsg2\n\nmsg3"
+
+    @pytest.mark.asyncio
+    async def test_with_prior_history(self, tmp_path):
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        session = loop.sessions.get_or_create("test:1")
+        session.add_message("user", "old")
+        session.add_message("assistant", "reply")
+        session.add_message("user", "new1")
+        session.add_message("user", "new2")
+
+        history, content, media = loop._prepare_turn_messages(session)
+        assert len(history) == 2  # old user + assistant
+        assert content == "new1\n\nnew2"
+
+    @pytest.mark.asyncio
+    async def test_empty_session(self, tmp_path):
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        session = loop.sessions.get_or_create("test:1")
+        history, content, media = loop._prepare_turn_messages(session)
+        assert history == []
+        assert content is None
+
+    @pytest.mark.asyncio
+    async def test_ends_with_assistant(self, tmp_path):
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        session = loop.sessions.get_or_create("test:1")
+        session.add_message("user", "q")
+        session.add_message("assistant", "a")
+
+        history, content, media = loop._prepare_turn_messages(session)
+        assert content is None
+
+
+# ---------------------------------------------------------------------------
+# Turn queuing via run()
+# ---------------------------------------------------------------------------
+
+
+class TestTurnQueuing:
+    """Tests for the ingest-then-turn architecture."""
+
+    @pytest.mark.asyncio
+    async def test_message_batching(self, tmp_path):
+        """Multiple messages published before run() starts should batch into one turn."""
+        provider = FakeProvider([_ok_response("batch reply")])
+        loop = await _make_loop(tmp_path, provider)
+
+        # Publish multiple messages before starting the loop
+        for text in ["msg1", "msg2", "msg3"]:
+            await loop.bus.publish_inbound(
+                InboundMessage(channel="telegram", sender_id="u1", chat_id="42", content=text)
+            )
+
+        loop._running = True
+
+        async def stop_after():
+            await asyncio.sleep(0.5)
+            loop.stop()
+
+        asyncio.create_task(stop_after())
+        await loop.run()
+
+        # All three messages should be in the session
+        session = loop.sessions.get_or_create("telegram:42")
+        user_msgs = [m for m in session.messages if m["role"] == "user"]
+        assert len(user_msgs) == 3
+
+        # Provider should have been called once (one turn, not three)
+        assert len(provider.calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_ingest_saves_immediately(self, tmp_path):
+        """_ingest_message should save messages to session without waiting for a turn."""
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        msg = InboundMessage(
+            channel="telegram", sender_id="u1", chat_id="99", content="saved"
+        )
+        loop._ingest_message(msg)
+
+        session = loop.sessions.get_or_create("telegram:99")
+        assert len(session.messages) == 1
+        assert session.messages[0]["content"] == "saved"

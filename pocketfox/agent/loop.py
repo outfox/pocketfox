@@ -101,6 +101,12 @@ class AgentLoop:
         )
 
         self._running = False
+
+        # Per-context turn scheduling state
+        self._ctx_events: dict[str, asyncio.Event] = {}
+        self._ctx_pending: dict[str, set[str]] = {}  # context → {session_keys}
+        self._ctx_meta: dict[str, dict[str, dict]] = {}  # context → {session_key → meta}
+
         self._register_default_tools()
 
     def _register_default_tools(self) -> None:
@@ -160,102 +166,270 @@ class AgentLoop:
             )
 
     async def run(self) -> None:
-        """Run the agent loop, processing messages from the bus."""
+        """Run the agent loop with separate ingestion and per-context turn execution."""
         self._running = True
         logger.info("Agent loop started")
 
-        while self._running:
-            try:
-                msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
+        tasks: list[asyncio.Task] = [asyncio.create_task(self._ingest_loop())]
 
-                try:
-                    if msg.channel == "system":
-                        results = await self._process_system_message(msg)
-                    elif self.router:
-                        matched = self.router.match(msg.channel, msg.chat_id)
-                        if not matched:
-                            logger.warning(f"No context for {msg.channel}:{msg.chat_id}, dropping")
-                            continue
-                        tasks = [self._process_in_context(msg, ctx_name) for ctx_name in matched]
-                        results = await asyncio.gather(*tasks, return_exceptions=True)
-                    else:
-                        # No router — legacy single-context mode
-                        out = await self._process_message(msg)
-                        results = [[out]] if out else [[]]
+        # One independent turn loop per configured context
+        if self.router:
+            for ctx_name in self.router._contexts:
+                self._init_context(ctx_name)
+                tasks.append(asyncio.create_task(self._context_turn_loop(ctx_name)))
 
-                    for result in results:
-                        if isinstance(result, Exception):
-                            logger.error(f"Error in context processing: {result}")
-                            continue
-                        if isinstance(result, list):
-                            for out_msg in result:
-                                if out_msg:
-                                    await self.bus.publish_outbound(out_msg)
-                except Exception as e:
-                    logger.error(f"Error processing message: {e}")
-                    await self.bus.publish_outbound(
-                        OutboundMessage(
-                            channel=msg.channel,
-                            chat_id=msg.chat_id,
-                            content=f"Sorry, I encountered an error: {str(e)}",
-                        )
-                    )
-            except asyncio.TimeoutError:
-                continue
+        # Always have a "default" context for legacy / no-router mode
+        if "default" not in self._ctx_events:
+            self._init_context("default")
+            tasks.append(asyncio.create_task(self._context_turn_loop("default")))
+
+        try:
+            await asyncio.gather(*tasks)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            for t in tasks:
+                t.cancel()
+
+    def _init_context(self, name: str) -> None:
+        """Initialise per-context turn-scheduling state."""
+        self._ctx_events[name] = asyncio.Event()
+        self._ctx_pending[name] = set()
+        self._ctx_meta[name] = {}
 
     def stop(self) -> None:
         """Stop the agent loop."""
         self._running = False
+        # Wake all context turn loops so they exit cleanly
+        for ev in self._ctx_events.values():
+            ev.set()
         logger.info("Agent loop stopping")
 
-    async def _process_in_context(
-        self, msg: InboundMessage, context_name: str
-    ) -> list[OutboundMessage]:
-        """Process a message within a specific context. Returns outbound messages."""
-        ctx_cfg = self.router.get_config(context_name)
-        ctx_model = ctx_cfg.model
+    # ------------------------------------------------------------------
+    # Ingestion — saves messages to sessions, signals context turn loops
+    # ------------------------------------------------------------------
 
-        # Set task-local context for tools
-        tc = TaskContext(
-            context_name=context_name, channel=msg.channel, chat_id=msg.chat_id, model=ctx_model
-        )
-        current_task.set(tc)
+    async def _ingest_loop(self) -> None:
+        """Continuously consume inbound messages, save to sessions, queue turns."""
+        while self._running:
+            try:
+                msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+            try:
+                self._ingest_message(msg)
+            except Exception as e:
+                logger.error(f"Error ingesting message: {e}")
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=f"Sorry, I encountered an error: {str(e)}",
+                    )
+                )
 
-        context_files = tuple(self.router.get_context_files(context_name))
-        session_key = f"{context_name}:{msg.channel}:{msg.chat_id}"
+    def _ingest_message(self, msg: InboundMessage) -> None:
+        """Route a message, save it to the appropriate session(s), and queue turns."""
+        if msg.channel == "system":
+            self._ingest_system_message(msg)
+            return
+
+        if self.router:
+            matched = self.router.match(msg.channel, msg.chat_id)
+            if not matched:
+                logger.warning(f"No context for {msg.channel}:{msg.chat_id}, dropping")
+                return
+            for ctx_name in matched:
+                ctx_cfg = self.router.get_config(ctx_name)
+                session_key = f"{ctx_name}:{msg.channel}:{msg.chat_id}"
+                self._save_and_queue(
+                    msg, session_key, ctx_name,
+                    model=ctx_cfg.model,
+                    context_files=tuple(self.router.get_context_files(ctx_name)),
+                )
+        else:
+            ctx_name = msg.context_name or "default"
+            ctx_model = None
+            if self.router and self.router.has_context(ctx_name):
+                ctx_model = self.router.get_config(ctx_name).model
+            self._save_and_queue(msg, msg.session_key, ctx_name, model=ctx_model)
+
+    def _ingest_system_message(self, msg: InboundMessage) -> None:
+        """Parse origin from a system message and save/queue it."""
+        parts = msg.chat_id.split(":", 2)
+        if len(parts) == 3:
+            origin_context, origin_channel, origin_chat_id = parts
+        elif len(parts) == 2:
+            origin_context = "default"
+            origin_channel, origin_chat_id = parts
+        else:
+            origin_context = "default"
+            origin_channel = "cli"
+            origin_chat_id = msg.chat_id
+
+        ctx_model = None
+        context_files = None
+        if self.router and self.router.has_context(origin_context):
+            ctx_model = self.router.get_config(origin_context).model
+            context_files = tuple(self.router.get_context_files(origin_context))
+
+        if self.router:
+            session_key = f"{origin_context}:{origin_channel}:{origin_chat_id}"
+        else:
+            session_key = f"{origin_channel}:{origin_chat_id}"
+
         session = self.sessions.get_or_create(session_key)
+        system_user_msg = f"[System: {msg.sender_id}] {msg.content}"
+        session.add_message("user", system_user_msg)
+        self.sessions.save(session)
 
         preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
-        logger.info(f"[{context_name}] Processing from {msg.channel}:{msg.sender_id}: {preview}")
+        logger.info(f"[{origin_context}] Ingested system msg from {msg.sender_id}: {preview}")
 
-        # Snapshot history before saving user message (build_messages adds it separately)
-        history = session.get_history()
+        self._queue_turn(
+            origin_context, session_key,
+            channel=origin_channel, chat_id=origin_chat_id,
+            model=ctx_model, context_files=context_files,
+        )
 
-        # Save user message to session early so /context reflects it during processing
+    def _save_and_queue(
+        self,
+        msg: InboundMessage,
+        session_key: str,
+        context_name: str,
+        model: str | None = None,
+        context_files: tuple[str, ...] | None = None,
+    ) -> None:
+        """Save user message to session and queue a turn for the context."""
+        session = self.sessions.get_or_create(session_key)
         media = msg.media if msg.media else None
         session.add_message("user", msg.content, **({"media": msg.media} if media else {}))
         self.sessions.save(session)
 
-        # Build initial messages
-        messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            media=media,
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            cache_ttl=msg.cache_ttl,
-            context_name=context_name,
-            context_files=context_files,
+        preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
+        logger.info(f"[{context_name}] Ingested from {msg.channel}:{msg.sender_id}: {preview}")
+
+        self._queue_turn(
+            context_name, session_key,
+            channel=msg.channel, chat_id=msg.chat_id,
+            model=model, cache_ttl=msg.cache_ttl, context_files=context_files,
         )
 
-        # Run the LLM loop
+    def _queue_turn(
+        self,
+        context_name: str,
+        session_key: str,
+        *,
+        channel: str,
+        chat_id: str,
+        model: str | None = None,
+        cache_ttl: int | None = None,
+        context_files: tuple[str, ...] | None = None,
+    ) -> None:
+        """Mark a session as needing a turn and signal its context loop."""
+        # Lazily init context state (handles dynamic / unknown contexts)
+        if context_name not in self._ctx_events:
+            self._init_context(context_name)
+            # Spin up a turn loop for this new context
+            asyncio.create_task(self._context_turn_loop(context_name))
+
+        if session_key not in self._ctx_meta[context_name]:
+            self._ctx_meta[context_name][session_key] = {
+                "context_name": context_name,
+                "channel": channel,
+                "chat_id": chat_id,
+                "model": model,
+                "cache_ttl": cache_ttl,
+                "context_files": context_files,
+            }
+        self._ctx_pending[context_name].add(session_key)
+        self._ctx_events[context_name].set()
+
+    # ------------------------------------------------------------------
+    # Per-context turn loops — run independently and in parallel
+    # ------------------------------------------------------------------
+
+    async def _context_turn_loop(self, context_name: str) -> None:
+        """Process pending turns for a single context. Runs as its own task."""
+        event = self._ctx_events[context_name]
+        logger.info(f"[{context_name}] Turn loop started")
+
+        while self._running:
+            try:
+                await asyncio.wait_for(event.wait(), timeout=1.0)
+            except asyncio.TimeoutError:
+                continue
+            event.clear()
+
+            # Inner loop: keep processing as long as new sessions appear
+            while self._ctx_pending[context_name] and self._running:
+                batch = set(self._ctx_pending[context_name])
+                self._ctx_pending[context_name].clear()
+                meta_batch = {
+                    sk: self._ctx_meta[context_name].pop(sk, None)
+                    for sk in batch
+                }
+
+                for session_key, meta in meta_batch.items():
+                    if meta is None:
+                        continue
+                    try:
+                        results = await self._run_session_turn(session_key, meta)
+                        for out_msg in results:
+                            if out_msg:
+                                await self.bus.publish_outbound(out_msg)
+                    except Exception as e:
+                        logger.error(f"Error in turn for {session_key}: {e}")
+                        await self.bus.publish_outbound(
+                            OutboundMessage(
+                                channel=meta["channel"],
+                                chat_id=meta["chat_id"],
+                                content=f"Sorry, I encountered an error: {str(e)}",
+                            )
+                        )
+
+    # ------------------------------------------------------------------
+    # Turn execution
+    # ------------------------------------------------------------------
+
+    async def _run_session_turn(
+        self, session_key: str, meta: dict
+    ) -> list[OutboundMessage]:
+        """Run a single LLM turn for a session with all accumulated messages."""
+        context_name = meta["context_name"]
+        ctx_model = meta.get("model")
+        channel = meta["channel"]
+        chat_id = meta["chat_id"]
+
+        tc = TaskContext(
+            context_name=context_name, channel=channel, chat_id=chat_id, model=ctx_model
+        )
+        current_task.set(tc)
+
+        session = self.sessions.get_or_create(session_key)
+        history, current_content, current_media = self._prepare_turn_messages(session)
+
+        if current_content is None:
+            return []
+
+        logger.info(f"[{context_name}] Starting turn for {channel}:{chat_id}")
+
+        messages = self.context.build_messages(
+            history=history,
+            current_message=current_content,
+            media=current_media,
+            channel=channel,
+            chat_id=chat_id,
+            cache_ttl=meta.get("cache_ttl"),
+            context_name=context_name,
+            context_files=meta.get("context_files"),
+        )
+
         final_content = await self._run_llm_loop(messages, session, model=ctx_model)
 
-        # LLM error — roll back the eagerly-saved user message
         if self._is_llm_error(final_content):
-            self._rollback_last_message(session)
             error_text = self._strip_error_prefix(final_content)
-            outputs = self.router.get_outputs(context_name, msg.channel, msg.chat_id)
+            outputs = self._resolve_outputs(meta)
             return [
                 OutboundMessage(channel=ch, chat_id=cid, content=error_text) for ch, cid in outputs
             ]
@@ -263,19 +437,74 @@ class AgentLoop:
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
 
-        # Log response preview
         preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
-        logger.info(f"[{context_name}] Response to {msg.channel}:{msg.sender_id}: {preview}")
+        logger.info(f"[{context_name}] Response: {preview}")
 
-        # Save assistant response (user message already saved above)
         session.add_message("assistant", final_content)
         self.sessions.save(session)
 
-        # Resolve output targets
-        outputs = self.router.get_outputs(context_name, msg.channel, msg.chat_id)
+        outputs = self._resolve_outputs(meta)
         return [
             OutboundMessage(channel=ch, chat_id=cid, content=final_content) for ch, cid in outputs
         ]
+
+    # ------------------------------------------------------------------
+    # History preparation — merge consecutive same-role messages
+    # ------------------------------------------------------------------
+
+    def _prepare_turn_messages(
+        self, session: object
+    ) -> tuple[list[dict], str | None, list[str] | None]:
+        """Split session history into (old_history, current_content, current_media).
+
+        Merges consecutive same-role messages so the LLM always sees proper
+        user/assistant alternation.  The last user block becomes current_content.
+        """
+        raw = session.get_history()
+        if not raw:
+            return [], None, None
+
+        merged = self._merge_consecutive(raw)
+
+        if merged and merged[-1]["role"] == "user":
+            current = merged.pop()
+            return merged, current["content"], current.get("media")
+
+        logger.warning("No user message at end of session for turn")
+        return merged, None, None
+
+    @staticmethod
+    def _merge_consecutive(history: list[dict]) -> list[dict]:
+        """Merge consecutive messages with the same role.
+
+        Concatenates content with double-newlines.  Combines media lists.
+        """
+        if not history:
+            return []
+
+        merged: list[dict] = []
+        for msg in history:
+            if merged and merged[-1]["role"] == msg["role"]:
+                prev = merged[-1]
+                prev["content"] = prev["content"] + "\n\n" + msg["content"]
+                if msg.get("media"):
+                    if "media" not in prev:
+                        prev["media"] = []
+                    prev["media"].extend(msg["media"])
+            else:
+                merged.append({**msg})
+        return merged
+
+    def _resolve_outputs(self, meta: dict) -> list[tuple[str, str]]:
+        """Resolve output targets from turn metadata."""
+        ctx = meta["context_name"]
+        if self.router and self.router.has_context(ctx):
+            return self.router.get_outputs(ctx, meta["channel"], meta["chat_id"])
+        return [(meta["channel"], meta["chat_id"])]
+
+    # ------------------------------------------------------------------
+    # LLM loop (unchanged)
+    # ------------------------------------------------------------------
 
     async def _run_llm_loop(
         self,
@@ -370,170 +599,6 @@ class AgentLoop:
         """Strip the sentinel prefix to get user-facing error text."""
         return content.removeprefix(_LLM_ERROR_PREFIX)
 
-    def _rollback_last_message(self, session: object) -> None:
-        """Remove the last message from a session and re-save (undo eager save)."""
-        if hasattr(session, "messages") and session.messages:
-            session.messages.pop()
-            self.sessions.save(session)
-
-    async def _process_message(self, msg: InboundMessage) -> OutboundMessage | None:
-        """Process a single inbound message (legacy non-router path)."""
-        if msg.channel == "system":
-            results = await self._process_system_message(msg)
-            # Return first non-None result
-            for r in results:
-                if isinstance(r, list):
-                    for out in r:
-                        if out:
-                            return out
-            return None
-
-        preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
-        logger.info(f"Processing message from {msg.channel}:{msg.sender_id}: {preview}")
-
-        # Set task context for tools
-        context_name = msg.context_name or "default"
-        ctx_model = None
-        if self.router and self.router.has_context(context_name):
-            ctx_model = self.router.get_config(context_name).model
-        tc = TaskContext(
-            context_name=context_name, channel=msg.channel, chat_id=msg.chat_id, model=ctx_model
-        )
-        current_task.set(tc)
-
-        session = self.sessions.get_or_create(msg.session_key)
-
-        # Snapshot history before saving user message (build_messages adds it separately)
-        history = session.get_history()
-
-        # Save user message to session early so /context reflects it during processing
-        media = msg.media if msg.media else None
-        session.add_message("user", msg.content, **({"media": msg.media} if media else {}))
-        self.sessions.save(session)
-
-        messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            media=media,
-            channel=msg.channel,
-            chat_id=msg.chat_id,
-            cache_ttl=msg.cache_ttl,
-            context_name=context_name,
-        )
-
-        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
-
-        # LLM error — roll back the eagerly-saved user message
-        if self._is_llm_error(final_content):
-            self._rollback_last_message(session)
-            return OutboundMessage(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                content=self._strip_error_prefix(final_content),
-            )
-
-        if final_content is None:
-            final_content = "I've completed processing but have no response to give."
-
-        preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
-        logger.info(f"Response to {msg.channel}:{msg.sender_id}: {preview}")
-
-        # Save assistant response (user message already saved above)
-        session.add_message("assistant", final_content)
-        self.sessions.save(session)
-
-        return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=final_content)
-
-    async def _process_system_message(self, msg: InboundMessage) -> list[list[OutboundMessage]]:
-        """Process a system message (subagent announce). Returns list of output lists."""
-        logger.info(f"Processing system message from {msg.sender_id}")
-
-        # Parse origin from chat_id (format: "context_name:channel:chat_id" or "channel:chat_id")
-        parts = msg.chat_id.split(":", 2)
-        if len(parts) == 3:
-            origin_context = parts[0]
-            origin_channel = parts[1]
-            origin_chat_id = parts[2]
-        elif len(parts) == 2:
-            origin_context = "default"
-            origin_channel = parts[0]
-            origin_chat_id = parts[1]
-        else:
-            origin_context = "default"
-            origin_channel = "cli"
-            origin_chat_id = msg.chat_id
-
-        # Resolve context model and files if router available
-        ctx_model = None
-        context_files = None
-        if self.router and self.router.has_context(origin_context):
-            ctx_model = self.router.get_config(origin_context).model
-            context_files = tuple(self.router.get_context_files(origin_context))
-
-        # Set task context
-        tc = TaskContext(
-            context_name=origin_context,
-            channel=origin_channel,
-            chat_id=origin_chat_id,
-            model=ctx_model,
-        )
-        current_task.set(tc)
-
-        # Build session key
-        if self.router:
-            session_key = f"{origin_context}:{origin_channel}:{origin_chat_id}"
-        else:
-            session_key = f"{origin_channel}:{origin_chat_id}"
-        session = self.sessions.get_or_create(session_key)
-
-        # Snapshot history before saving system message (build_messages adds it separately)
-        history = session.get_history()
-
-        # Save system message to session early so /context reflects it during processing
-        system_user_msg = f"[System: {msg.sender_id}] {msg.content}"
-        session.add_message("user", system_user_msg)
-        self.sessions.save(session)
-
-        messages = self.context.build_messages(
-            history=history,
-            current_message=msg.content,
-            channel=origin_channel,
-            chat_id=origin_chat_id,
-            context_name=origin_context,
-            context_files=context_files,
-        )
-
-        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
-
-        if self._is_llm_error(final_content):
-            self._rollback_last_message(session)
-            error_text = self._strip_error_prefix(final_content)
-            error_msg = (
-                "A background task failed due to an API error.\n\n"
-                f"<details><summary>Error details</summary>\n\n"
-                f"{error_text}\n\n</details>"
-            )
-            return [
-                [OutboundMessage(channel=origin_channel, chat_id=origin_chat_id, content=error_msg)]
-            ]
-
-        if final_content is None:
-            final_content = "Background task completed."
-
-        # Save assistant response (system message already saved above)
-        session.add_message("assistant", final_content)
-        self.sessions.save(session)
-
-        # Resolve outputs
-        if self.router and self.router.has_context(origin_context):
-            outputs = self.router.get_outputs(origin_context, origin_channel, origin_chat_id)
-        else:
-            outputs = [(origin_channel, origin_chat_id)]
-
-        return [
-            [OutboundMessage(channel=ch, chat_id=cid, content=final_content) for ch, cid in outputs]
-        ]
-
     async def process_direct(
         self,
         content: str,
@@ -543,28 +608,47 @@ class AgentLoop:
         cache_ttl: int | None = None,
         context_name: str | None = None,
     ) -> str:
-        """
-        Process a message directly (for CLI or cron usage).
+        """Process a message directly (for CLI or cron usage).
 
-        Args:
-            content: The message content.
-            session_key: Session identifier.
-            channel: Source channel (for context).
-            chat_id: Source chat ID (for context).
-            cache_ttl: Optional Anthropic prompt cache TTL in seconds.
-            context_name: Context to route through.
-
-        Returns:
-            The agent's response.
+        Saves the message to the session, then runs a turn synchronously.
         """
-        msg = InboundMessage(
+        ctx_name = context_name or "default"
+        ctx_model = None
+        context_files = None
+        if self.router and self.router.has_context(ctx_name):
+            ctx_model = self.router.get_config(ctx_name).model
+            context_files = tuple(self.router.get_context_files(ctx_name))
+
+        session = self.sessions.get_or_create(session_key)
+        session.add_message("user", content)
+        self.sessions.save(session)
+
+        tc = TaskContext(
+            context_name=ctx_name, channel=channel, chat_id=chat_id, model=ctx_model
+        )
+        current_task.set(tc)
+
+        history, current_content, current_media = self._prepare_turn_messages(session)
+
+        messages = self.context.build_messages(
+            history=history,
+            current_message=current_content,
+            media=current_media,
             channel=channel,
-            sender_id="user",
             chat_id=chat_id,
-            content=content,
             cache_ttl=cache_ttl,
-            context_name=context_name,
+            context_name=ctx_name,
+            context_files=context_files,
         )
 
-        response = await self._process_message(msg)
-        return response.content if response else ""
+        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
+
+        if self._is_llm_error(final_content):
+            return self._strip_error_prefix(final_content)
+
+        if final_content is None:
+            final_content = "I've completed processing but have no response to give."
+
+        session.add_message("assistant", final_content)
+        self.sessions.save(session)
+        return final_content
