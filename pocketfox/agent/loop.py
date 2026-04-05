@@ -28,6 +28,7 @@ from pocketfox.agent.tools.view_image import ViewImageTool
 from pocketfox.agent.tools.voice import VoiceTool
 from pocketfox.agent.tools.web import WebFetchTool, WebSearchTool
 from pocketfox.bus.events import InboundMessage, OutboundMessage
+from pocketfox.utils.helpers import truncate_string
 from pocketfox.bus.queue import MessageBus
 from pocketfox.providers.base import LLMProvider
 from pocketfox.session.manager import SessionManager
@@ -104,8 +105,8 @@ class AgentLoop:
 
         # Per-context turn scheduling state
         self._ctx_events: dict[str, asyncio.Event] = {}
-        self._ctx_pending: dict[str, set[str]] = {}  # context → {session_keys}
         self._ctx_meta: dict[str, dict[str, dict]] = {}  # context → {session_key → meta}
+        self._dynamic_tasks: list[asyncio.Task] = []  # lazily-created context turn loops
 
         self._register_default_tools()
 
@@ -188,13 +189,12 @@ class AgentLoop:
         except asyncio.CancelledError:
             pass
         finally:
-            for t in tasks:
+            for t in tasks + self._dynamic_tasks:
                 t.cancel()
 
     def _init_context(self, name: str) -> None:
         """Initialise per-context turn-scheduling state."""
         self._ctx_events[name] = asyncio.Event()
-        self._ctx_pending[name] = set()
         self._ctx_meta[name] = {}
 
     def stop(self) -> None:
@@ -249,10 +249,7 @@ class AgentLoop:
                 )
         else:
             ctx_name = msg.context_name or "default"
-            ctx_model = None
-            if self.router and self.router.has_context(ctx_name):
-                ctx_model = self.router.get_config(ctx_name).model
-            self._save_and_queue(msg, msg.session_key, ctx_name, model=ctx_model)
+            self._save_and_queue(msg, msg.session_key, ctx_name)
 
     def _ingest_system_message(self, msg: InboundMessage) -> None:
         """Parse origin from a system message and save/queue it."""
@@ -283,7 +280,7 @@ class AgentLoop:
         session.add_message("user", system_user_msg)
         self.sessions.save(session)
 
-        preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
+        preview = truncate_string(msg.content, 83)
         logger.info(f"[{origin_context}] Ingested system msg from {msg.sender_id}: {preview}")
 
         self._queue_turn(
@@ -302,11 +299,10 @@ class AgentLoop:
     ) -> None:
         """Save user message to session and queue a turn for the context."""
         session = self.sessions.get_or_create(session_key)
-        media = msg.media if msg.media else None
-        session.add_message("user", msg.content, **({"media": msg.media} if media else {}))
+        session.add_message("user", msg.content, **({"media": msg.media} if msg.media else {}))
         self.sessions.save(session)
 
-        preview = msg.content[:80] + "..." if len(msg.content) > 80 else msg.content
+        preview = truncate_string(msg.content, 83)
         logger.info(f"[{context_name}] Ingested from {msg.channel}:{msg.sender_id}: {preview}")
 
         self._queue_turn(
@@ -327,22 +323,19 @@ class AgentLoop:
         context_files: tuple[str, ...] | None = None,
     ) -> None:
         """Mark a session as needing a turn and signal its context loop."""
-        # Lazily init context state (handles dynamic / unknown contexts)
         if context_name not in self._ctx_events:
             self._init_context(context_name)
-            # Spin up a turn loop for this new context
-            asyncio.create_task(self._context_turn_loop(context_name))
+            task = asyncio.create_task(self._context_turn_loop(context_name))
+            self._dynamic_tasks.append(task)
 
-        if session_key not in self._ctx_meta[context_name]:
-            self._ctx_meta[context_name][session_key] = {
-                "context_name": context_name,
-                "channel": channel,
-                "chat_id": chat_id,
-                "model": model,
-                "cache_ttl": cache_ttl,
-                "context_files": context_files,
-            }
-        self._ctx_pending[context_name].add(session_key)
+        self._ctx_meta[context_name][session_key] = {
+            "context_name": context_name,
+            "channel": channel,
+            "chat_id": chat_id,
+            "model": model,
+            "cache_ttl": cache_ttl,
+            "context_files": context_files,
+        }
         self._ctx_events[context_name].set()
 
     # ------------------------------------------------------------------
@@ -355,24 +348,17 @@ class AgentLoop:
         logger.info(f"[{context_name}] Turn loop started")
 
         while self._running:
-            try:
-                await asyncio.wait_for(event.wait(), timeout=1.0)
-            except asyncio.TimeoutError:
-                continue
+            await event.wait()
             event.clear()
+            if not self._running:
+                break
 
             # Inner loop: keep processing as long as new sessions appear
-            while self._ctx_pending[context_name] and self._running:
-                batch = set(self._ctx_pending[context_name])
-                self._ctx_pending[context_name].clear()
-                meta_batch = {
-                    sk: self._ctx_meta[context_name].pop(sk, None)
-                    for sk in batch
-                }
+            while self._ctx_meta[context_name] and self._running:
+                meta_batch = dict(self._ctx_meta[context_name])
+                self._ctx_meta[context_name].clear()
 
                 for session_key, meta in meta_batch.items():
-                    if meta is None:
-                        continue
                     try:
                         results = await self._run_session_turn(session_key, meta)
                         for out_msg in results:
@@ -437,7 +423,7 @@ class AgentLoop:
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
 
-        preview = final_content[:120] + "..." if len(final_content) > 120 else final_content
+        preview = truncate_string(final_content, 123)
         logger.info(f"[{context_name}] Response: {preview}")
 
         session.add_message("assistant", final_content)
@@ -503,7 +489,7 @@ class AgentLoop:
         return [(meta["channel"], meta["chat_id"])]
 
     # ------------------------------------------------------------------
-    # LLM loop (unchanged)
+    # LLM loop
     # ------------------------------------------------------------------
 
     async def _run_llm_loop(

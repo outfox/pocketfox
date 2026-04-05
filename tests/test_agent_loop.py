@@ -13,6 +13,7 @@ from pocketfox.agent.entries import ImageEntry
 from pocketfox.bus.events import InboundMessage
 from pocketfox.bus.queue import MessageBus
 from pocketfox.providers.base import LLMResponse, ToolCallRequest
+from pocketfox.agent.loop import AgentLoop
 from pocketfox.session.manager import SessionManager
 
 FAKE_B64 = "iVBORw0KGgoAAAANSUhEUg=="
@@ -65,7 +66,6 @@ async def _make_loop(
     session_manager: SessionManager | None = None,
 ):
     """Create a minimal AgentLoop with a fake provider."""
-    from pocketfox.agent.loop import AgentLoop
     from pocketfox.config.schema import ExecToolConfig, VoiceToolConfig
 
     bus = MessageBus()
@@ -439,8 +439,6 @@ class TestRunErrorDelivery:
         loop = await _make_loop(tmp_path, provider)
 
         # Make _run_session_turn raise
-        original_run_turn = loop._run_session_turn
-
         async def exploding_turn(session_key, meta):
             raise RuntimeError("kaboom")
 
@@ -781,13 +779,9 @@ class TestMergeConsecutive:
     """Tests for AgentLoop._merge_consecutive."""
 
     def test_empty(self):
-        from pocketfox.agent.loop import AgentLoop
-
         assert AgentLoop._merge_consecutive([]) == []
 
     def test_already_alternating(self):
-        from pocketfox.agent.loop import AgentLoop
-
         history = [
             {"role": "user", "content": "a"},
             {"role": "assistant", "content": "b"},
@@ -798,8 +792,6 @@ class TestMergeConsecutive:
         assert merged[0]["content"] == "a"
 
     def test_consecutive_user_messages(self):
-        from pocketfox.agent.loop import AgentLoop
-
         history = [
             {"role": "user", "content": "hello"},
             {"role": "user", "content": "world"},
@@ -810,8 +802,6 @@ class TestMergeConsecutive:
         assert merged[0]["content"] == "hello\n\nworld\n\n!"
 
     def test_merge_preserves_media(self):
-        from pocketfox.agent.loop import AgentLoop
-
         history = [
             {"role": "user", "content": "a", "media": ["/img1.png"]},
             {"role": "user", "content": "b", "media": ["/img2.png"]},
@@ -821,8 +811,6 @@ class TestMergeConsecutive:
         assert merged[0]["media"] == ["/img1.png", "/img2.png"]
 
     def test_merge_media_first_has_none(self):
-        from pocketfox.agent.loop import AgentLoop
-
         history = [
             {"role": "user", "content": "text only"},
             {"role": "user", "content": "with img", "media": ["/img.png"]},
@@ -832,8 +820,6 @@ class TestMergeConsecutive:
         assert merged[0]["media"] == ["/img.png"]
 
     def test_does_not_mutate_input(self):
-        from pocketfox.agent.loop import AgentLoop
-
         history = [
             {"role": "user", "content": "a"},
             {"role": "user", "content": "b"},
