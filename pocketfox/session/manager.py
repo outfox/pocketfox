@@ -125,6 +125,7 @@ class SessionManager:
             messages = []
             metadata = {}
             created_at = None
+            updated_at = None
 
             with open(path) as f:
                 for line in f:
@@ -141,6 +142,11 @@ class SessionManager:
                             if data.get("created_at")
                             else None
                         )
+                        updated_at = (
+                            datetime.fromisoformat(data["updated_at"])
+                            if data.get("updated_at")
+                            else None
+                        )
                     else:
                         messages.append(data)
 
@@ -148,6 +154,7 @@ class SessionManager:
                 key=key,
                 messages=messages,
                 created_at=created_at or datetime.now(),
+                updated_at=updated_at or datetime.now(),
                 metadata=metadata,
             )
         except Exception as e:
