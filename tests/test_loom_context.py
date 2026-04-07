@@ -224,3 +224,51 @@ def test_entry_persists_across_build_context_calls(workspace):
     # And rendered in both contexts
     rendered = ctx2.render()
     assert "Persistent content" in rendered
+
+
+def test_prologue_appears_in_system_prompt(workspace):
+    """A context prologue is included in the rendered system prompt."""
+    builder = ContextBuilder(workspace)
+    prologue_text = "This is a telegram group chat with close friends of the user."
+
+    prompt = builder.build_system_prompt(
+        context_name="friends",
+        context_files=("AGENTS.md",),
+        prologue=prologue_text,
+    )
+
+    assert prologue_text in prompt
+
+
+def test_prologue_appears_in_build_messages(workspace):
+    """Prologue is included when building LLM messages."""
+    builder = ContextBuilder(workspace)
+    prologue_text = "This context is a direct conversation with your super-user."
+
+    messages = builder.build_messages(
+        history=[],
+        current_message="hi",
+        context_name="superuser",
+        context_files=("AGENTS.md",),
+        prologue=prologue_text,
+    )
+
+    system_content = messages[0]["content"]
+    # system content can be string or list of blocks
+    if isinstance(system_content, list):
+        full_text = " ".join(
+            b.get("text", "") for b in system_content if isinstance(b, dict)
+        )
+    else:
+        full_text = system_content
+    assert prologue_text in full_text
+
+
+def test_no_prologue_by_default(workspace):
+    """Without prologue, no 'Context Prologue' entry appears."""
+    builder = ContextBuilder(workspace)
+
+    ctx = builder.build_context(context_name="plain", context_files=("AGENTS.md",))
+
+    names = [e.name for e in ctx.foundation.entries]
+    assert "Context Prologue" not in names

@@ -40,6 +40,7 @@ allow_from = ["${SIGNAL_ALLOW_FROM}"]
 # from agents.defaults.context_files + all enabled channels as wildcard I/O.
 
 # [contexts.main]
+# prologue = "This is a direct conversation with your super-user."
 # context_files = ["AGENTS.md", "SOUL.md", "USER.md", "TOOLS.md", "MEMORY.md"]
 # inputs = ["telegram:*", "discord:*"]
 # outputs_responsive = ["telegram:*", "discord:*"]

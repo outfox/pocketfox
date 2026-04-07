@@ -79,13 +79,20 @@ class ContextBuilder:
         """
         return self._get_or_create_context(self.DEFAULT_CONTEXT_NAME, self._default_files)
 
-    def _get_or_create_context(self, context_name: str, context_files: tuple[str, ...]) -> Context:
+    def _get_or_create_context(
+        self,
+        context_name: str,
+        context_files: tuple[str, ...],
+        prologue: str | None = None,
+    ) -> Context:
         """Get or create a Context keyed by context_name."""
         if context_name not in self._contexts:
-            self._contexts[context_name] = self._create_context(list(context_files))
+            self._contexts[context_name] = self._create_context(
+                list(context_files), prologue=prologue
+            )
         return self._contexts[context_name]
 
-    def _create_context(self, context_files: list[str]) -> Context:
+    def _create_context(self, context_files: list[str], prologue: str | None = None) -> Context:
         """Create a new LOOM Context with sections populated from the given file list."""
         ctx = Context("agent")
 
@@ -96,6 +103,9 @@ class ContextBuilder:
                 name="identity",
             )
         )
+
+        if prologue:
+            ctx.foundation.add(StringEntry(prologue, name="Context Prologue"))
 
         include_memory = False
         for filename in context_files:
@@ -275,6 +285,7 @@ class ContextBuilder:
         chat_id: str | None = None,
         context_name: str | None = None,
         context_files: tuple[str, ...] | None = None,
+        prologue: str | None = None,
     ) -> Context:
         """
         Get the persistent LOOM Context, updating session info if provided.
@@ -284,13 +295,14 @@ class ContextBuilder:
             chat_id: Current chat/user ID.
             context_name: Name to key the context cache by.
             context_files: Files to load for this context.
+            prologue: Optional system prompt describing this context.
 
         Returns:
             The persistent LOOM Context.
         """
         name = context_name or self.DEFAULT_CONTEXT_NAME
         files = context_files or self._default_files
-        ctx = self._get_or_create_context(name, files)
+        ctx = self._get_or_create_context(name, files, prologue=prologue)
 
         # Update session info in topic section (remove old, add new)
         # This is the only thing that changes per-request
@@ -317,6 +329,7 @@ class ContextBuilder:
         chat_id: str | None = None,
         context_name: str | None = None,
         context_files: tuple[str, ...] | None = None,
+        prologue: str | None = None,
     ) -> str:
         """
         Build the system prompt from LOOM context.
@@ -327,6 +340,7 @@ class ContextBuilder:
             chat_id: Current chat/user ID.
             context_name: Name to key the context cache by.
             context_files: Files to load for this context.
+            prologue: Optional system prompt describing this context.
 
         Returns:
             Complete system prompt as string.
@@ -336,6 +350,7 @@ class ContextBuilder:
             chat_id=chat_id,
             context_name=context_name,
             context_files=context_files,
+            prologue=prologue,
         )
         return ctx.render()
 
@@ -392,6 +407,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         cache_ttl: int | None = None,
         context_name: str | None = None,
         context_files: tuple[str, ...] | None = None,
+        prologue: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Build the complete message list for an LLM call.
@@ -420,6 +436,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             chat_id=chat_id,
             context_name=context_name,
             context_files=context_files,
+            prologue=prologue,
         )
 
         # System prompt with cache breakpoints (4 total, Anthropic max):

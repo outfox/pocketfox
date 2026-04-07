@@ -246,6 +246,7 @@ class AgentLoop:
                     msg, session_key, ctx_name,
                     model=ctx_cfg.model,
                     context_files=tuple(self.router.get_context_files(ctx_name)),
+                    prologue=ctx_cfg.prologue,
                 )
         else:
             ctx_name = msg.context_name or "default"
@@ -266,9 +267,12 @@ class AgentLoop:
 
         ctx_model = None
         context_files = None
+        prologue = None
         if self.router and self.router.has_context(origin_context):
-            ctx_model = self.router.get_config(origin_context).model
+            ctx_cfg = self.router.get_config(origin_context)
+            ctx_model = ctx_cfg.model
             context_files = tuple(self.router.get_context_files(origin_context))
+            prologue = ctx_cfg.prologue
 
         if self.router:
             session_key = f"{origin_context}:{origin_channel}:{origin_chat_id}"
@@ -287,6 +291,7 @@ class AgentLoop:
             origin_context, session_key,
             channel=origin_channel, chat_id=origin_chat_id,
             model=ctx_model, context_files=context_files,
+            prologue=prologue,
         )
 
     def _save_and_queue(
@@ -296,6 +301,7 @@ class AgentLoop:
         context_name: str,
         model: str | None = None,
         context_files: tuple[str, ...] | None = None,
+        prologue: str | None = None,
     ) -> None:
         """Save user message to session and queue a turn for the context."""
         session = self.sessions.get_or_create(session_key)
@@ -309,6 +315,7 @@ class AgentLoop:
             context_name, session_key,
             channel=msg.channel, chat_id=msg.chat_id,
             model=model, cache_ttl=msg.cache_ttl, context_files=context_files,
+            prologue=prologue,
         )
 
     def _queue_turn(
@@ -321,6 +328,7 @@ class AgentLoop:
         model: str | None = None,
         cache_ttl: int | None = None,
         context_files: tuple[str, ...] | None = None,
+        prologue: str | None = None,
     ) -> None:
         """Mark a session as needing a turn and signal its context loop."""
         if context_name not in self._ctx_events:
@@ -335,6 +343,7 @@ class AgentLoop:
             "model": model,
             "cache_ttl": cache_ttl,
             "context_files": context_files,
+            "prologue": prologue,
         }
         self._ctx_events[context_name].set()
 
@@ -409,6 +418,7 @@ class AgentLoop:
             cache_ttl=meta.get("cache_ttl"),
             context_name=context_name,
             context_files=meta.get("context_files"),
+            prologue=meta.get("prologue"),
         )
 
         final_content = await self._run_llm_loop(messages, session, model=ctx_model)
@@ -601,9 +611,12 @@ class AgentLoop:
         ctx_name = context_name or "default"
         ctx_model = None
         context_files = None
+        prologue = None
         if self.router and self.router.has_context(ctx_name):
-            ctx_model = self.router.get_config(ctx_name).model
+            ctx_cfg = self.router.get_config(ctx_name)
+            ctx_model = ctx_cfg.model
             context_files = tuple(self.router.get_context_files(ctx_name))
+            prologue = ctx_cfg.prologue
 
         session = self.sessions.get_or_create(session_key)
         session.add_message("user", content)
@@ -625,6 +638,7 @@ class AgentLoop:
             cache_ttl=cache_ttl,
             context_name=ctx_name,
             context_files=context_files,
+            prologue=prologue,
         )
 
         final_content = await self._run_llm_loop(messages, session, model=ctx_model)

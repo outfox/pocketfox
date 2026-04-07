@@ -104,6 +104,7 @@ class ContextConfig(BaseModel):
     """A context defines an independent agent personality with routing rules."""
 
     model: str | None = None  # Override agents.defaults.model for this context
+    prologue: str | None = None  # Extra system prompt describing this context
     context_files: list[str] = Field(default_factory=lambda: ["AGENTS.md", "TOOLS.md"])
     inputs: list[str] = Field(default_factory=list)
     outputs_always: list[str] = Field(default_factory=list)
