@@ -179,12 +179,19 @@ class VoiceToolConfig(BaseModel):
     default_speed: float = 1.0  # 0.6=slow, 1.0=natural, 1.2=fast
 
 
+class MediaConfig(BaseModel):
+    """Media processing configuration."""
+
+    max_file_size_mb: float = 10.0  # Max document/media file size in MiB
+
+
 class ToolsConfig(BaseModel):
     """Tools configuration."""
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
     voice: VoiceToolConfig = Field(default_factory=VoiceToolConfig)
+    media: MediaConfig = Field(default_factory=MediaConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
 
 

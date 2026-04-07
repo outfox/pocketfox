@@ -20,6 +20,9 @@ model = "openrouter/anthropic/claude-sonnet-4-5"
 [tools]
 restrict_to_workspace = true
 
+[tools.media]
+max_file_size_mb = 10.0  # Max document/media file size in MiB
+
 [tools.web.search]
 api_key = "${BRAVE_API_KEY}"
 

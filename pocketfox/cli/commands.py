@@ -379,6 +379,7 @@ def gateway(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
         default_context_files=config.agents.defaults.context_files,
+        max_document_bytes=int(config.tools.media.max_file_size_mb * 1024 * 1024),
     )
 
     # Set cron callback for dynamic cron jobs (needs agent)
@@ -631,6 +632,7 @@ def agent(
         voice_config=config.tools.voice,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         default_context_files=config.agents.defaults.context_files,
+        max_document_bytes=int(config.tools.media.max_file_size_mb * 1024 * 1024),
     )
 
     if message:

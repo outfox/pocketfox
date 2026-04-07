@@ -71,6 +71,7 @@ class AgentLoop:
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
         default_context_files: list[str] | None = None,
+        max_document_bytes: int = 10 * 1024 * 1024,
     ):
         self.bus = bus
         self.provider = provider
@@ -88,6 +89,7 @@ class AgentLoop:
         self.context = ContextBuilder(
             workspace,
             default_context_files=default_context_files,
+            max_document_bytes=max_document_bytes,
         )
         self.sessions = session_manager or SessionManager(workspace)
         self.sessions.on_session_reset = self.context.clear_kept_images

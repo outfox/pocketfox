@@ -61,6 +61,7 @@ class ContextBuilder:
         self,
         workspace: Path,
         default_context_files: list[str] | None = None,
+        max_document_bytes: int = 10 * 1024 * 1024,
     ):
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
@@ -68,6 +69,7 @@ class ContextBuilder:
         self._default_files = tuple(default_context_files or ["AGENTS.md", "TOOLS.md"])
         self._contexts: dict[str, Context] = {}
         self._runtime_entry_ids: set[str] = set()  # loom entry .id values added via add_entry()
+        self.max_document_bytes = max_document_bytes
 
     @property
     def context(self) -> Context:
@@ -592,12 +594,18 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
     _VIDEO_SUFFIXES: ClassVar[set[str]] = {".mp4", ".webm", ".mov", ".avi"}
 
     def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images/videos."""
+        """Build user message content with optional base64-encoded images/videos/documents."""
         if not media:
             return text
 
+        from pocketfox.utils.document import (
+            DOCUMENT_SUFFIXES,
+            encode_document_block,
+            extract_document_text,
+        )
         from pocketfox.utils.image import encode_image_file
 
+        max_doc = self.max_document_bytes
         media_blocks: list[dict[str, Any]] = []
         notes: list[str] = []
         for path in media:
@@ -605,12 +613,34 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             if not p.is_file():
                 continue
 
-            if p.suffix.lower() in self._VIDEO_SUFFIXES:
+            suffix = p.suffix.lower()
+
+            if suffix in self._VIDEO_SUFFIXES:
                 block = self._encode_video_block(p)
                 if block:
                     media_blocks.append(block)
                 else:
                     notes.append(f"(video {p.name} skipped: exceeds size limit or unreadable)")
+                continue
+
+            if suffix in DOCUMENT_SUFFIXES:
+                # Try native MIME-annotated content block first
+                doc_block = encode_document_block(p, max_bytes=max_doc)
+                if doc_block:
+                    media_blocks.append(doc_block)
+                    continue
+                # Fall back to text extraction
+                doc_text = extract_document_text(p, max_bytes=max_doc)
+                if doc_text:
+                    media_blocks.append({
+                        "type": "text",
+                        "text": f"[Document: {p.name}]\n{doc_text}\n[End of {p.name}]",
+                    })
+                else:
+                    notes.append(
+                        f"(document {p.name} skipped: unsupported, missing library, or exceeds "
+                        f"{max_doc / 1024 / 1024:.0f} MiB limit)"
+                    )
                 continue
 
             result = encode_image_file(p)
