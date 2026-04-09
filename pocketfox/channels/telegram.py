@@ -195,7 +195,7 @@ class TelegramChannel(BaseChannel):
         self._app.add_handler(CommandHandler("context", self._on_context))
         self._app.add_handler(CommandHandler("help", self._on_help))
 
-        # Add message handler for text, photos, voice, stickers, documents
+        # Add message handler for text, photos, voice, stickers, documents, videos
         self._app.add_handler(
             MessageHandler(
                 (
@@ -203,6 +203,7 @@ class TelegramChannel(BaseChannel):
                     | filters.PHOTO
                     | filters.VOICE
                     | filters.AUDIO
+                    | filters.VIDEO
                     | filters.Sticker.ALL
                     | filters.Document.ALL
                 )
@@ -821,6 +822,9 @@ class TelegramChannel(BaseChannel):
         elif message.audio:
             media_file = message.audio
             media_type = "audio"
+        elif message.video:
+            media_file = message.video
+            media_type = "video"
         elif message.animation:
             media_file = message.animation
             media_type = "animation"
@@ -1033,6 +1037,7 @@ class TelegramChannel(BaseChannel):
         type_map = {
             "image": ".jpg",
             "animation": ".mp4",
+            "video": ".mp4",
             "voice": ".ogg",
             "audio": ".mp3",
             "file": "",

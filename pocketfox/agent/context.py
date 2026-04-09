@@ -700,9 +700,13 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         Add a tool result to the message list.
 
         For multimodal results (list of content blocks containing images),
-        the text portion goes into the tool result and the image is injected
-        as a follow-up user message.  This ensures compatibility with providers
-        that don't support images inside tool results.
+        the text portion goes into the tool result and any image blocks are
+        returned to the caller so they can be appended *after* every tool
+        result for the current assistant turn has been written. This is
+        required by Anthropic, which mandates that all tool_result blocks for
+        a given assistant tool_use message live in the single user message
+        immediately following it — interleaving image-bearing user messages
+        between tool_result blocks breaks that contract.
 
         Args:
             messages: Current message list.
@@ -712,10 +716,13 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                 content blocks (for multimodal results like images).
 
         Returns:
-            Updated message list.
+            Image content blocks from this tool result that the caller should
+            buffer and append in a single follow-up user message after all
+            tool_results for the current assistant turn have been written.
+            Empty list when there are no images.
         """
         if isinstance(result, list):
-            # Split multimodal content: text → tool result, images → user message
+            # Split multimodal content: text → tool result, images → buffered for caller
             text_parts = [b["text"] for b in result if b.get("type") == "text"]
             image_parts = [b for b in result if b.get("type") == "image_url"]
 
@@ -727,23 +734,17 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
                     "content": "\n".join(text_parts) or "(see image below)",
                 }
             )
-            if image_parts:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": image_parts + [{"type": "text", "text": "[image from tool]"}],
-                    }
-                )
-        else:
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "name": tool_name,
-                    "content": result,
-                }
-            )
-        return messages
+            return image_parts
+
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "name": tool_name,
+                "content": result,
+            }
+        )
+        return []
 
     def add_assistant_message(
         self,

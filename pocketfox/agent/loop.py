@@ -574,13 +574,32 @@ class AgentLoop:
                     reasoning_content=response.reasoning_content,
                 )
 
+                # Collect any image blocks returned by multimodal tools (e.g.
+                # view_image) and append them in a single follow-up user
+                # message *after* every tool_result for this assistant turn
+                # has been written. Anthropic requires all tool_result blocks
+                # to live in the single user message immediately following
+                # the assistant tool_use message — interleaving image-bearing
+                # user messages between them breaks that contract.
+                pending_image_blocks: list[dict] = []
                 for tool_call in response.tool_calls:
                     redacted = self.tools.redact_params(tool_call.name, tool_call.arguments)
                     args_str = json.dumps(redacted, ensure_ascii=False)
                     logger.info(f"Tool call: {tool_call.name}({args_str[:200]})")
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
-                    messages = self.context.add_tool_result(
+                    image_blocks = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
+                    )
+                    if image_blocks:
+                        pending_image_blocks.extend(image_blocks)
+
+                if pending_image_blocks:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": pending_image_blocks
+                            + [{"type": "text", "text": "[images from tools]"}],
+                        }
                     )
             else:
                 return response.content

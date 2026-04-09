@@ -213,7 +213,11 @@ class TTYAgent:
                     reasoning_content=response.reasoning_content,
                 )
 
-                # Execute tools
+                # Execute tools. Collect any image blocks returned by
+                # multimodal tools and append them in a single follow-up user
+                # message after every tool_result has been written (see
+                # AgentLoop._run_llm_loop for the rationale).
+                pending_image_blocks: list[dict] = []
                 for tool_call in response.tool_calls:
                     self._log_tool_call(tool_call.name, tool_call.arguments)
 
@@ -221,9 +225,11 @@ class TTYAgent:
                     if self.breakpoints:
                         if not self._prompt_breakpoint(tool_call.name, tool_call.arguments):
                             result = "[skipped by user]"
-                            messages = self.context.add_tool_result(
+                            image_blocks = self.context.add_tool_result(
                                 messages, tool_call.id, tool_call.name, result
                             )
+                            if image_blocks:
+                                pending_image_blocks.extend(image_blocks)
                             self._log_tool_result(tool_call.name, result)
                             continue
 
@@ -233,10 +239,21 @@ class TTYAgent:
                     else:
                         result = await self.tools.execute(tool_call.name, tool_call.arguments)
 
-                    messages = self.context.add_tool_result(
+                    image_blocks = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+                    if image_blocks:
+                        pending_image_blocks.extend(image_blocks)
                     self._log_tool_result(tool_call.name, result)
+
+                if pending_image_blocks:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": pending_image_blocks
+                            + [{"type": "text", "text": "[images from tools]"}],
+                        }
+                    )
             else:
                 final_content = response.content
                 break
