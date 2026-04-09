@@ -858,21 +858,21 @@ class TelegramChannel(BaseChannel):
                         logger.info(f"Transcribed {media_type}: {transcription[:50]}...")
                         content_parts.append(f"[transcription: {transcription}]")
                     else:
-                        content_parts.append(f"[{media_type}: {file_path}]")
+                        content_parts.append(f"[{media_type} attached: {file_path.name}]")
                 elif media_type == "sticker_video":
                     # Transcode .webm sticker to .mp4 for broader LLM compatibility
                     mp4_path = file_path.with_suffix(".mp4")
                     transcoded = await self._transcode_video(file_path, mp4_path)
                     if transcoded:
                         media_paths.append(str(transcoded))
-                        content_parts.append(f"[sticker_video: {transcoded}]")
+                        content_parts.append(f"[sticker_video attached: {transcoded.name}]")
                     else:
                         # Fallback: pass original .webm
                         media_paths.append(str(file_path))
-                        content_parts.append(f"[sticker_video: {file_path}]")
+                        content_parts.append(f"[sticker_video attached: {file_path.name}]")
                 else:
                     media_paths.append(str(file_path))
-                    content_parts.append(f"[{media_type}: {file_path}]")
+                    content_parts.append(f"[{media_type} attached: {file_path.name}]")
 
                 logger.debug(f"Downloaded {media_type} to {file_path}")
             except Exception as e:
