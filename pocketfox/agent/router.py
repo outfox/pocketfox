@@ -17,7 +17,7 @@ class ContextRouter:
     """
 
     def __init__(self, contexts: dict[str, ContextConfig]):
-        self._contexts = contexts
+        self.contexts = contexts
         self._exact: dict[str, list[str]] = {}
         self._wildcard: dict[str, list[str]] = {}
 
@@ -52,11 +52,11 @@ class ContextRouter:
 
     def get_context_files(self, name: str) -> list[str]:
         """Return context_files for a context."""
-        return list(self._contexts[name].context_files)
+        return list(self.contexts[name].context_files)
 
     def get_cron_context_files(self, name: str) -> list[str]:
         """Return context_files + cron_files for cron-triggered turns."""
-        cfg = self._contexts[name]
+        cfg = self.contexts[name]
         return list(cfg.context_files) + list(cfg.cron_files)
 
     def get_outputs(
@@ -66,7 +66,7 @@ class ContextRouter:
         trigger_chat_id: str | None = None,
     ) -> list[tuple[str, str]]:
         """Deduplicated output targets. trigger=None → only outputs_always."""
-        cfg = self._contexts[name]
+        cfg = self.contexts[name]
         seen: set[tuple[str, str]] = set()
         result: list[tuple[str, str]] = []
 
@@ -95,12 +95,12 @@ class ContextRouter:
 
     def get_cron_contexts(self) -> list[tuple[str, ContextConfig]]:
         """Return contexts that have a cron schedule."""
-        return [(name, cfg) for name, cfg in self._contexts.items() if cfg.cron]
+        return [(name, cfg) for name, cfg in self.contexts.items() if cfg.cron]
 
     def has_context(self, name: str) -> bool:
         """Check if a context name exists."""
-        return name in self._contexts
+        return name in self.contexts
 
     def get_config(self, name: str) -> ContextConfig:
         """Return the ContextConfig for a context name."""
-        return self._contexts[name]
+        return self.contexts[name]

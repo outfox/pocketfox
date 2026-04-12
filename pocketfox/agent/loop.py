@@ -123,7 +123,7 @@ class AgentLoop:
         self.tools.register(EditFileTool(allowed_dir=allowed_dir))
         self.tools.register(ListDirTool(allowed_dir=allowed_dir))
 
-        # Shell tool
+        # shell tool
         self.tools.register(
             ExecTool(
                 working_dir=str(self.workspace),
@@ -179,7 +179,7 @@ class AgentLoop:
 
         # One independent turn loop per configured context
         if self.router:
-            for ctx_name in self.router._contexts:
+            for ctx_name in self.router.contexts:
                 self._init_context(ctx_name)
                 tasks.append(asyncio.create_task(self._context_turn_loop(ctx_name)))
 
@@ -197,7 +197,7 @@ class AgentLoop:
                 t.cancel()
 
     def _init_context(self, name: str) -> None:
-        """Initialise per-context turn-scheduling state."""
+        """Initialize per-context turn-scheduling state."""
         self._ctx_events[name] = asyncio.Event()
         self._ctx_meta[name] = {}
 

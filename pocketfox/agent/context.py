@@ -2,7 +2,7 @@
 
 import platform
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Callable
 
 from loguru import logger
 from loom import Context, Entry, FileEntry, StringEntry
@@ -251,7 +251,7 @@ class ContextBuilder:
         return removed
 
     # Backward-compatible alias
-    clear_kept_images = clear_kept_entries
+    clear_kept_images: Callable[..., int] = clear_kept_entries
 
     def list_entries(self, section: str) -> list[dict[str, str]]:
         """
@@ -661,8 +661,8 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             if result is None:
                 notes.append(f"(media {p.name} skipped: unsupported format or exceeds 5 MB limit)")
                 continue
-            data_uri, _b64, _mime, reencoded = result
-            if reencoded:
+            data_uri, _b64, _mime, re_encoded = result
+            if re_encoded:
                 notes.append(f"(image {p.name} re-encoded to jpeg)")
             media_blocks.append(
                 {
