@@ -83,7 +83,7 @@ def test_registry_redact_params() -> None:
     
     # Message tool redacts phone numbers
     params = {"content": "Hi", "chat_id": "+491234567890"}
-    result = registry.redact_params("message", params)
+    result = registry.redact_params("message_send", params)
     assert result["chat_id"] == "+***"
     
     # Simple tool doesn't redact

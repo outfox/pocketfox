@@ -43,7 +43,7 @@ class ViewImageTool(Tool):
 
     @property
     def name(self) -> str:
-        return "view_image"
+        return "fs_view_image"
 
     @property
     def description(self) -> str:

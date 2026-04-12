@@ -23,7 +23,7 @@ class MessageTool(Tool):
 
     @property
     def name(self) -> str:
-        return "message"
+        return "message_send"
 
     @property
     def description(self) -> str:

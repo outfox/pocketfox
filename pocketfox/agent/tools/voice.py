@@ -24,7 +24,7 @@ class VoiceTool(Tool):
     @property
     def name(self) -> str:
         """Tool name used in function calls."""
-        return "voice"
+        return "voice_speak"
 
     @property
     def description(self) -> str:

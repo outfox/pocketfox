@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from pocketfox.agent import ContextBuilder
 from pocketfox.agent.context import ContextBuilder
 from pocketfox.agent.router import ContextRouter
 from pocketfox.agent.subagent import SubagentManager
@@ -54,6 +55,7 @@ class AgentLoop:
     5. Executes tool calls
     6. Sends responses to resolved output targets
     """
+    context: ContextBuilder
 
     def __init__(
         self,
@@ -249,6 +251,7 @@ class AgentLoop:
                     model=ctx_cfg.model,
                     context_files=tuple(self.router.get_context_files(ctx_name)),
                     prologue=ctx_cfg.prologue,
+                    allowed_tools=tuple(ctx_cfg.allowed_tools),
                 )
         else:
             ctx_name = msg.context_name or "default"
@@ -270,11 +273,13 @@ class AgentLoop:
         ctx_model = None
         context_files = None
         prologue = None
+        allowed_tools: tuple[str, ...] | None = None
         if self.router and self.router.has_context(origin_context):
             ctx_cfg = self.router.get_config(origin_context)
             ctx_model = ctx_cfg.model
             context_files = tuple(self.router.get_context_files(origin_context))
             prologue = ctx_cfg.prologue
+            allowed_tools = tuple(ctx_cfg.allowed_tools)
 
         if self.router:
             session_key = f"{origin_context}:{origin_channel}:{origin_chat_id}"
@@ -294,6 +299,7 @@ class AgentLoop:
             channel=origin_channel, chat_id=origin_chat_id,
             model=ctx_model, context_files=context_files,
             prologue=prologue,
+            allowed_tools=allowed_tools,
         )
 
     def _save_and_queue(
@@ -304,6 +310,7 @@ class AgentLoop:
         model: str | None = None,
         context_files: tuple[str, ...] | None = None,
         prologue: str | None = None,
+        allowed_tools: tuple[str, ...] | None = None,
     ) -> None:
         """Save user message to session and queue a turn for the context."""
         session = self.sessions.get_or_create(session_key)
@@ -318,6 +325,7 @@ class AgentLoop:
             channel=msg.channel, chat_id=msg.chat_id,
             model=model, cache_ttl=msg.cache_ttl, context_files=context_files,
             prologue=prologue,
+            allowed_tools=allowed_tools,
         )
 
     def _queue_turn(
@@ -331,6 +339,7 @@ class AgentLoop:
         cache_ttl: int | None = None,
         context_files: tuple[str, ...] | None = None,
         prologue: str | None = None,
+        allowed_tools: tuple[str, ...] | None = None,
     ) -> None:
         """Mark a session as needing a turn and signal its context loop."""
         if context_name not in self._ctx_events:
@@ -346,6 +355,7 @@ class AgentLoop:
             "cache_ttl": cache_ttl,
             "context_files": context_files,
             "prologue": prologue,
+            "allowed_tools": allowed_tools,
         }
         self._ctx_events[context_name].set()
 
@@ -423,7 +433,10 @@ class AgentLoop:
             prologue=meta.get("prologue"),
         )
 
-        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
+        final_content = await self._run_llm_loop(
+            messages, session, model=ctx_model,
+            allowed_tools=meta.get("allowed_tools"),
+        )
 
         if self._is_llm_error(final_content):
             error_text = self._strip_error_prefix(final_content)
@@ -509,6 +522,7 @@ class AgentLoop:
         messages: list[dict],
         session: SessionManager | object | None = None,
         model: str | None = None,
+        allowed_tools: tuple[str, ...] | None = None,
     ) -> str | None:
         """Run the iterative LLM + tool execution loop.
 
@@ -521,7 +535,7 @@ class AgentLoop:
 
             response = await self.provider.chat(
                 messages=messages,
-                tools=self.tools.get_definitions(),
+                tools=self.tools.get_definitions(allowed_tools),
                 model=model or self.model,
                 max_tokens=self.max_tokens,
             )
@@ -586,7 +600,15 @@ class AgentLoop:
                     redacted = self.tools.redact_params(tool_call.name, tool_call.arguments)
                     args_str = json.dumps(redacted, ensure_ascii=False)
                     logger.info(f"Tool call: {tool_call.name}({args_str[:200]})")
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    if not self.tools.is_allowed(tool_call.name, allowed_tools):
+                        logger.warning(
+                            f"Tool '{tool_call.name}' blocked by context whitelist"
+                        )
+                        result = (
+                            f"Error: Tool '{tool_call.name}' is not allowed in this context."
+                        )
+                    else:
+                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
                     image_blocks = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
@@ -633,11 +655,13 @@ class AgentLoop:
         ctx_model = None
         context_files = None
         prologue = None
+        allowed_tools: tuple[str, ...] | None = None
         if self.router and self.router.has_context(ctx_name):
             ctx_cfg = self.router.get_config(ctx_name)
             ctx_model = ctx_cfg.model
             context_files = tuple(self.router.get_context_files(ctx_name))
             prologue = ctx_cfg.prologue
+            allowed_tools = tuple(ctx_cfg.allowed_tools)
 
         session = self.sessions.get_or_create(session_key)
         session.add_message("user", content)
@@ -662,7 +686,9 @@ class AgentLoop:
             prologue=prologue,
         )
 
-        final_content = await self._run_llm_loop(messages, session, model=ctx_model)
+        final_content = await self._run_llm_loop(
+            messages, session, model=ctx_model, allowed_tools=allowed_tools,
+        )
 
         if self._is_llm_error(final_content):
             return self._strip_error_prefix(final_content)

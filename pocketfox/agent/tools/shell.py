@@ -61,7 +61,7 @@ class ExecTool(Tool):
 
     @property
     def name(self) -> str:
-        return "exec"
+        return "shell_exec"
 
     @property
     def description(self) -> str:

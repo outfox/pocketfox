@@ -107,7 +107,7 @@ class SkillsLoader:
         Build a summary of all skills (name, description, path, availability).
 
         This is used for progressive loading - the agent can read the full
-        skill content using read_file when needed.
+        skill content using fs_read when needed.
 
         Returns:
             XML-formatted skills summary.

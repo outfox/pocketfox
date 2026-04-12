@@ -138,7 +138,7 @@ class ContextBuilder:
         if skills_summary:
             skills_preamble = (
                 "The following skills extend your capabilities."
-                " To use a skill, read its SKILL.md file using the read_file tool.\n"
+                " To use a skill, read its SKILL.md file using the fs_read tool.\n"
                 'Skills with available="false" need dependencies installed'
                 " first - you can try installing them with apt/brew."
             )
@@ -384,7 +384,7 @@ your native multimodal capabilities. A bracketed label like
 is already in your context.
 
 Do NOT try to re-process attached media by running ffmpeg, extracting
-frames, using image libraries, or calling read_file/exec/view_image on it.
+frames, using image libraries, or calling fs_read/shell_exec/fs_view_image on it.
 Trust that the content is already in your context and respond as if you
 naturally perceived it. Only fall back to tool-based processing if the user
 explicitly points you at a path to a file that was NOT attached to the

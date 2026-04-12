@@ -50,7 +50,7 @@ def _error_response(msg: str = "AuthenticationError: invalid api key") -> LLMRes
     return LLMResponse(content=f"Error calling LLM: {msg}", finish_reason="error")
 
 
-def _tool_response(tool_name: str = "read_file", tool_id: str = "tc_1") -> LLMResponse:
+def _tool_response(tool_name: str = "fs_read", tool_id: str = "tc_1") -> LLMResponse:
     return LLMResponse(
         content="",
         finish_reason="stop",
@@ -143,9 +143,9 @@ class TestLLMErrorHandling:
 
         # Register a dummy tool so execution doesn't fail
         dummy_tool = MagicMock()
-        dummy_tool.name = "read_file"
+        dummy_tool.name = "fs_read"
         dummy_tool.execute = AsyncMock(return_value="file contents")
-        loop.tools._tools["read_file"] = dummy_tool
+        loop.tools._tools["fs_read"] = dummy_tool
         loop.tools.redact_params = MagicMock(return_value={"path": "/tmp/x"})
 
         session = loop.sessions.get_or_create("telegram:tool_err")
@@ -481,7 +481,7 @@ class TestRunErrorDelivery:
 
 
 class TestReadFileKeep:
-    """Tests for read_file with keep=True."""
+    """Tests for fs_read with keep=True."""
 
     def _make_builder(self, tmp_path):
         return ContextBuilder(tmp_path)

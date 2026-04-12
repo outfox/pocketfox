@@ -1,5 +1,6 @@
 """Tool registry for dynamic tool management."""
 
+import fnmatch
 from typing import Any
 
 from pocketfox.agent.tools.base import Tool
@@ -31,9 +32,37 @@ class ToolRegistry:
         """Check if a tool is registered."""
         return name in self._tools
 
-    def get_definitions(self) -> list[dict[str, Any]]:
-        """Get all tool definitions in OpenAI format."""
-        return [tool.to_schema() for tool in self._tools.values()]
+    def get_definitions(
+        self,
+        allowed_patterns: list[str] | tuple[str, ...] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Get tool definitions in OpenAI format, optionally filtered by glob patterns.
+
+        Args:
+            allowed_patterns: Glob patterns (fnmatch syntax: ``*``, ``?``, ``[seq]``).
+                Empty or ``None`` returns all tools (no filtering).
+        """
+        defs = [tool.to_schema() for tool in self._tools.values()]
+        if not allowed_patterns:
+            return defs
+        return [d for d in defs if self._name_matches(d["function"]["name"], allowed_patterns)]
+
+    def is_allowed(
+        self,
+        name: str,
+        allowed_patterns: list[str] | tuple[str, ...] | None,
+    ) -> bool:
+        """Check if a tool name is allowed under the given whitelist.
+
+        Empty or ``None`` patterns means allow-all.
+        """
+        if not allowed_patterns:
+            return True
+        return self._name_matches(name, allowed_patterns)
+
+    @staticmethod
+    def _name_matches(name: str, patterns: list[str] | tuple[str, ...]) -> bool:
+        return any(fnmatch.fnmatchcase(name, p) for p in patterns)
 
     async def execute(self, name: str, params: dict[str, Any]) -> str | list[dict[str, Any]]:
         """

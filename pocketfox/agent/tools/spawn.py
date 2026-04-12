@@ -21,7 +21,7 @@ class SpawnTool(Tool):
 
     @property
     def name(self) -> str:
-        return "spawn"
+        return "agent_spawn"
 
     @property
     def description(self) -> str:

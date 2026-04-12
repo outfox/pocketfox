@@ -106,6 +106,9 @@ class ContextConfig(BaseModel):
     model: str | None = None  # Override agents.defaults.model for this context
     prologue: str | None = None  # Extra system prompt describing this context
     context_files: list[str] = Field(default_factory=lambda: ["AGENTS.md", "TOOLS.md"])
+    # Glob patterns matched against tool names (e.g. ["fs_*", "message_*"]).
+    # Empty = all tools allowed (backward compat).
+    allowed_tools: list[str] = Field(default_factory=list)
     inputs: list[str] = Field(default_factory=list)
     outputs_always: list[str] = Field(default_factory=list)
     outputs_responsive: list[str] = Field(default_factory=list)

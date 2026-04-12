@@ -15,7 +15,7 @@ class CronTool(Tool):
 
     @property
     def name(self) -> str:
-        return "cron"
+        return "cron_schedule"
 
     @property
     def description(self) -> str:

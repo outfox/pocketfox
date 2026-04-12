@@ -43,7 +43,7 @@ class TestViewImageToolSchema:
 
     def test_name(self):
         tool = ViewImageTool()
-        assert tool.name == "view_image"
+        assert tool.name == "fs_view_image"
 
     def test_description(self):
         tool = ViewImageTool()

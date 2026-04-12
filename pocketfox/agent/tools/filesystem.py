@@ -32,7 +32,7 @@ class ReadFileTool(Tool):
 
     @property
     def name(self) -> str:
-        return "read_file"
+        return "fs_read"
 
     @property
     def description(self) -> str:
@@ -89,7 +89,7 @@ class WriteFileTool(Tool):
 
     @property
     def name(self) -> str:
-        return "write_file"
+        return "fs_write"
 
     @property
     def description(self) -> str:
@@ -126,7 +126,7 @@ class EditFileTool(Tool):
 
     @property
     def name(self) -> str:
-        return "edit_file"
+        return "fs_edit"
 
     @property
     def description(self) -> str:
@@ -184,7 +184,7 @@ class ListDirTool(Tool):
 
     @property
     def name(self) -> str:
-        return "list_dir"
+        return "fs_list"
 
     @property
     def description(self) -> str:

@@ -6,9 +6,9 @@ metadata: {"pocketfox":{"emoji":"🧵","os":["darwin","linux"],"requires":{"bins
 
 # tmux Skill
 
-Use tmux only when you need an interactive TTY. Prefer exec background mode for long-running, non-interactive tasks.
+Use tmux only when you need an interactive TTY. Prefer shell_exec background mode for long-running, non-interactive tasks.
 
-## Quickstart (isolated socket, exec tool)
+## Quickstart (isolated socket, shell_exec tool)
 
 ```bash
 SOCKET_DIR="${PF_TMUX_SOCKET_DIR:-${TMPDIR:-/tmp}/pocketfox-tmux-sockets}"

@@ -37,9 +37,9 @@ Get USER_ID and CHANNEL from the current session (e.g., `8281248569` and `telegr
 
 `HEARTBEAT.md` is checked every 30 minutes. You can manage periodic tasks by editing this file:
 
-- **Add a task**: Use `edit_file` to append new tasks to `HEARTBEAT.md`
-- **Remove a task**: Use `edit_file` to remove completed or obsolete tasks
-- **Rewrite tasks**: Use `write_file` to completely rewrite the task list
+- **Add a task**: Use `fs_edit` to append new tasks to `HEARTBEAT.md`
+- **Remove a task**: Use `fs_edit` to remove completed or obsolete tasks
+- **Rewrite tasks**: Use `fs_write` to completely rewrite the task list
 
 Task format examples:
 ```

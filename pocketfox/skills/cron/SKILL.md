@@ -5,7 +5,7 @@ description: Schedule reminders and recurring tasks.
 
 # Cron
 
-Use the `cron` tool to schedule reminders or recurring tasks.
+Use the `cron_schedule` tool to schedule reminders or recurring tasks.
 
 ## Two Modes
 
@@ -16,18 +16,18 @@ Use the `cron` tool to schedule reminders or recurring tasks.
 
 Fixed reminder:
 ```
-cron(action="add", message="Time to take a break!", every_seconds=1200)
+cron_schedule(action="add", message="Time to take a break!", every_seconds=1200)
 ```
 
 Dynamic task (agent executes each time):
 ```
-cron(action="add", message="Check outfox/pocketfox GitHub stars and report", every_seconds=600)
+cron_schedule(action="add", message="Check outfox/pocketfox GitHub stars and report", every_seconds=600)
 ```
 
 List/remove:
 ```
-cron(action="list")
-cron(action="remove", job_id="abc123")
+cron_schedule(action="list")
+cron_schedule(action="remove", job_id="abc123")
 ```
 
 ## Time Expressions

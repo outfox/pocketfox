@@ -38,7 +38,7 @@ def _assistant_with_tool_uses(ids: list[str]) -> dict[str, Any]:
         "role": "assistant",
         "content": "",
         "tool_calls": [
-            {"id": tid, "type": "function", "function": {"name": "view_image", "arguments": "{}"}}
+            {"id": tid, "type": "function", "function": {"name": "fs_view_image", "arguments": "{}"}}
             for tid in ids
         ],
     }
@@ -49,13 +49,13 @@ class TestAddToolResultStringResult:
 
     def test_string_result_appends_tool_message(self, builder: ContextBuilder) -> None:
         messages: list[dict[str, Any]] = []
-        images = builder.add_tool_result(messages, "tool_id_1", "exec", "ok")
+        images = builder.add_tool_result(messages, "tool_id_1", "shell_exec", "ok")
 
         assert images == []
         assert len(messages) == 1
         assert messages[0]["role"] == "tool"
         assert messages[0]["tool_call_id"] == "tool_id_1"
-        assert messages[0]["name"] == "exec"
+        assert messages[0]["name"] == "shell_exec"
         assert messages[0]["content"] == "ok"
 
 
@@ -66,7 +66,7 @@ class TestAddToolResultMultimodalResult:
         messages: list[dict[str, Any]] = []
         result = _multimodal_image_result("Image: a.jpg")
 
-        images = builder.add_tool_result(messages, "tool_id_1", "view_image", result)
+        images = builder.add_tool_result(messages, "tool_id_1", "fs_view_image", result)
 
         # Exactly one tool message was appended.
         assert len(messages) == 1
@@ -85,13 +85,13 @@ class TestAddToolResultMultimodalResult:
         result = [
             {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,X=="}},
         ]
-        images = builder.add_tool_result(messages, "tid", "view_image", result)
+        images = builder.add_tool_result(messages, "tid", "fs_view_image", result)
         assert messages[0]["content"] == "(see image below)"
         assert len(images) == 1
 
 
 class TestAddToolResultParallelDoesNotInterleave:
-    """The crash repro: three parallel view_image calls in one assistant turn.
+    """The crash repro: three parallel fs_view_image calls in one assistant turn.
 
     After three sequential add_tool_result calls, the message sequence must
     be: assistant(tool_uses) → tool, tool, tool — with no user messages in
@@ -112,7 +112,7 @@ class TestAddToolResultParallelDoesNotInterleave:
             ("t3", "Image: frame_05.jpg"),
         ]:
             images = builder.add_tool_result(
-                messages, tid, "view_image", _multimodal_image_result(name)
+                messages, tid, "fs_view_image", _multimodal_image_result(name)
             )
             pending.extend(images)
 
@@ -132,7 +132,7 @@ class TestAddToolResultParallelDoesNotInterleave:
 class TestAgentLoopImageFanOut:
     """End-to-end check on the AgentLoop tool execution loop.
 
-    Drives a fake provider that returns three parallel view_image calls and
+    Drives a fake provider that returns three parallel fs_view_image calls and
     asserts the resulting message sequence is well-formed for Anthropic.
     """
 
@@ -147,13 +147,13 @@ class TestAgentLoopImageFanOut:
         from pocketfox.config.schema import ExecToolConfig, VoiceToolConfig
         from pocketfox.providers.base import LLMResponse, ToolCallRequest
 
-        # First response: three parallel view_image calls. Second: final text.
+        # First response: three parallel fs_view_image calls. Second: final text.
         first = LLMResponse(
             content="",
             tool_calls=[
-                ToolCallRequest(id="t1", name="view_image", arguments={"path": "/tmp/a.jpg"}),
-                ToolCallRequest(id="t2", name="view_image", arguments={"path": "/tmp/b.jpg"}),
-                ToolCallRequest(id="t3", name="view_image", arguments={"path": "/tmp/c.jpg"}),
+                ToolCallRequest(id="t1", name="fs_view_image", arguments={"path": "/tmp/a.jpg"}),
+                ToolCallRequest(id="t2", name="fs_view_image", arguments={"path": "/tmp/b.jpg"}),
+                ToolCallRequest(id="t3", name="fs_view_image", arguments={"path": "/tmp/c.jpg"}),
             ],
             finish_reason="tool_calls",
         )
@@ -171,7 +171,7 @@ class TestAgentLoopImageFanOut:
             voice_config=VoiceToolConfig(),
         )
 
-        # Stub the registry: view_image always returns a multimodal result.
+        # Stub the registry: fs_view_image always returns a multimodal result.
         async def fake_execute(name: str, params: dict) -> list[dict]:
             return _multimodal_image_result(f"Image: {Path(params['path']).name}")
 
