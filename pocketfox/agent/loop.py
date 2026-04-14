@@ -586,6 +586,7 @@ class AgentLoop:
                     response.content,
                     tool_call_dicts,
                     reasoning_content=response.reasoning_content,
+                    reasoning_details=response.reasoning_details,
                 )
 
                 # Collect any image blocks returned by multimodal tools (e.g.

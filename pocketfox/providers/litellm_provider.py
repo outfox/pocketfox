@@ -11,6 +11,15 @@ from pocketfox.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 from pocketfox.providers.registry import find_by_model, find_gateway
 
 
+def _merge_overrides(kwargs: dict[str, Any], overrides: dict[str, Any]) -> None:
+    """Merge registry overrides into kwargs, deep-merging extra_body."""
+    for key, val in overrides.items():
+        if key == "extra_body" and isinstance(kwargs.get("extra_body"), dict) and isinstance(val, dict):
+            kwargs["extra_body"] = {**kwargs["extra_body"], **val}
+        else:
+            kwargs[key] = val
+
+
 class LiteLLMProvider(LLMProvider):
     """
     LLM provider using LiteLLM for multi-provider support.
@@ -90,13 +99,19 @@ class LiteLLMProvider(LLMProvider):
         return model
 
     def _apply_model_overrides(self, model: str, kwargs: dict[str, Any]) -> None:
-        """Apply model-specific parameter overrides from the registry."""
+        """Apply model-specific parameter overrides from the registry.
+
+        Consults both the matched standard provider (if any) and the active
+        gateway spec (if any) — gateways route arbitrary models, so their
+        per-model overrides must also fire (e.g. OpenRouter → xiaomi/mimo).
+        """
         model_lower = model.lower()
-        spec = find_by_model(model)
-        if spec:
+        for spec in (find_by_model(model), self._gateway):
+            if not spec:
+                continue
             for pattern, overrides in spec.model_overrides:
                 if pattern in model_lower:
-                    kwargs.update(overrides)
+                    _merge_overrides(kwargs, overrides)
                     return
 
     async def chat(
@@ -192,6 +207,22 @@ class LiteLLMProvider(LLMProvider):
                 usage["cache_read_input_tokens"] = response.usage.cache_read_input_tokens
 
         reasoning_content = getattr(message, "reasoning_content", None)
+        reasoning_details = getattr(message, "reasoning_details", None)
+
+        # LiteLLM 1.83.1 may not know about OpenRouter's reasoning_details field
+        # and stash it in pydantic's model_extra instead of exposing it directly.
+        if reasoning_details is None:
+            extra = getattr(message, "model_extra", None) or {}
+            reasoning_details = extra.get("reasoning_details")
+
+        # Synthesize a human-readable reasoning_content from details when the
+        # server populates details-only (MiMo via OpenRouter). Keeps downstream
+        # display/logging code working without caring about the shape.
+        if not reasoning_content and reasoning_details:
+            synthesized = "\n".join(
+                d.get("text", "") for d in reasoning_details if isinstance(d, dict)
+            ).strip()
+            reasoning_content = synthesized or None
 
         return LLMResponse(
             content=message.content,
@@ -199,6 +230,7 @@ class LiteLLMProvider(LLMProvider):
             finish_reason=choice.finish_reason or "stop",
             usage=usage,
             reasoning_content=reasoning_content,
+            reasoning_details=reasoning_details,
         )
 
     def get_default_model(self) -> str:
