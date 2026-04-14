@@ -17,7 +17,6 @@ import asyncio
 import os
 import sys
 
-from pocketfox.agent.context import ContextBuilder  # noqa: F401  (unused direct, but mirrors prod code path)
 from pocketfox.providers.litellm_provider import LiteLLMProvider
 
 
