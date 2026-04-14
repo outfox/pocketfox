@@ -211,6 +211,7 @@ class TTYAgent:
                     response.content,
                     tool_call_dicts,
                     reasoning_content=response.reasoning_content,
+                    reasoning_details=response.reasoning_details,
                 )
 
                 # Execute tools. Collect any image blocks returned by

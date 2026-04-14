@@ -78,7 +78,11 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         detect_by_base_keyword="openrouter",
         default_api_base="https://openrouter.ai/api/v1",
         strip_model_prefix=False,
-        model_overrides=(),
+        # MiMo V2 Pro: pass reasoning via extra_body so LiteLLM's drop_params
+        # can't silently strip it before the request leaves the library.
+        model_overrides=(
+            ("xiaomi/mimo", {"extra_body": {"reasoning": {"enabled": True}}}),
+        ),
     ),
     # AiHubMix: global gateway, OpenAI-compatible interface.
     # strip_model_prefix=True: it doesn't understand "anthropic/claude-3",

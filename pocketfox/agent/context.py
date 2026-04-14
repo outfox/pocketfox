@@ -766,6 +766,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         content: str | None,
         tool_calls: list[dict[str, Any]] | None = None,
         reasoning_content: str | None = None,
+        reasoning_details: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Add an assistant message to the message list.
@@ -775,6 +776,8 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             content: Message content.
             tool_calls: Optional tool calls.
             reasoning_content: Thinking output (Kimi, DeepSeek-R1, etc.).
+            reasoning_details: OpenRouter reasoning segments (MiMo etc.) — must
+                round-trip verbatim in subsequent turns.
 
         Returns:
             Updated message list.
@@ -787,6 +790,9 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         # Thinking models reject history without this
         if reasoning_content:
             msg["reasoning_content"] = reasoning_content
+
+        if reasoning_details:
+            msg["reasoning_details"] = reasoning_details
 
         messages.append(msg)
         return messages
