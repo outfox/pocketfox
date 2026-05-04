@@ -4,7 +4,7 @@
   <p><em>An ultra-lightweight personal AI assistant with composable contexts.</em></p>
 </div>
 
-**pocketfox** is a small (~3,500 LOC) async Python agent framework. It connects an LLM
+**pocketfox** is a small (<10k SLoC) async Python agent framework. It connects an LLM
 to chat platforms (Telegram, Discord, WhatsApp, Signal, Feishu, DingTalk), tools, and
 scheduled tasks — and lets you wire each one into independent **contexts** that decide
 *who* the agent is, *what* it can do, and *which channels* it listens and replies on.
