@@ -145,20 +145,31 @@ RUN mkdir -p /home/${AGENT_NAME}/workspace \
 RUN mkdir -p /root/.ssh && \
     ssh-keyscan github.com >> /root/.ssh/known_hosts
 
-# Copy pocketfox from local source (this repo)
+# Copy pocketfox from local source (this repo), including the vendored loom
+# git submodule at ./loom.
 COPY . /root/pocketfox
 
 ARG CACHE_BUST=0
 
+# loom is vendored as a git submodule at ./loom and referenced by pyproject as
+# `context-loom[media] @ {root:uri}/loom` (-> /root/pocketfox/loom). The COPY
+# above brings the checked-out submodule, so loom is built from the exact commit
+# pocketfox pins to. If the build context lacked it (e.g. the repo was cloned
+# without `--recurse-submodules`), fall back to fetching it into the same path.
 RUN --mount=type=ssh \
-    git clone --depth 1 git@github.com:outfox/loom /root/loom
+    if [ ! -f /root/pocketfox/loom/pyproject.toml ]; then \
+        echo "loom submodule missing from build context; cloning origin/main" && \
+        rm -rf /root/pocketfox/loom && \
+        git clone --depth 1 git@github.com:outfox/loom /root/pocketfox/loom; \
+    fi
 
 RUN --mount=type=ssh \
     git clone --depth 1 git@github.com:outfox/any2any /root/any2any
 
-# Install loom first (dependency), then pocketfox from local source
-WORKDIR /root/loom
-RUN uv pip install --system --no-cache .
+# Install loom first (dependency) from the vendored submodule, with the same
+# [media] extras pocketfox requests, so the installed loom matches the pin.
+WORKDIR /root/pocketfox/loom
+RUN uv pip install --system --no-cache ".[media]"
 
 # Install convert-all for file format conversions (e.g. docx to markdown)
 WORKDIR /root/any2any
