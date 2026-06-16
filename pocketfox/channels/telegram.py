@@ -914,6 +914,7 @@ class TelegramChannel(BaseChannel):
         content: str,
         media: list[str] | None = None,
         metadata: dict | None = None,
+        sender_name: str | None = None,
     ) -> None:
         """Override to stash the inbound ``message_id`` before calling super().
 
@@ -922,6 +923,9 @@ class TelegramChannel(BaseChannel):
         signature.  We extract it here and stash it in ``_chat_message_ids`` so
         that ``_start_typing_indicator`` can form the composite key
         ``(chat_id, message_id)`` for ``_placeholder_ids``.
+
+        ``sender_name`` is forwarded to super() so the sender attribution flows
+        through to the bus (and on to the serializers) unchanged.
         """
         message_id = str((metadata or {}).get("message_id", ""))
         if message_id:
@@ -932,6 +936,7 @@ class TelegramChannel(BaseChannel):
             content=content,
             media=media,
             metadata=metadata,
+            sender_name=sender_name,
         )
 
     async def _start_typing_indicator(self, chat_id: str, content: str = "") -> None:
