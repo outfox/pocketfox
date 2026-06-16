@@ -881,11 +881,12 @@ class TelegramChannel(BaseChannel):
 
         content = "\n".join(content_parts) if content_parts else "[empty message]"
 
-        # Prepend [username] so the agent can tell users apart
+        # The sender flows through structurally (sender_name) so the agent can
+        # tell users apart; serializers attribute it (OpenAI name / Anthropic
+        # [name] prefix) rather than us baking it into the text here.
         display_name = user.username or user.first_name or str(user.id)
-        content = f"[{display_name}] {content}"
 
-        logger.debug(f"Telegram message from {sender_id}: {content[:50]}...")
+        logger.debug(f"Telegram message from {display_name} ({sender_id}): {content[:50]}...")
 
         str_chat_id = str(chat_id)
 
@@ -895,6 +896,7 @@ class TelegramChannel(BaseChannel):
             sender_id=sender_id,
             chat_id=str_chat_id,
             content=content,
+            sender_name=display_name,
             media=media_paths,
             metadata={
                 "message_id": message.message_id,

@@ -834,6 +834,25 @@ class TestMergeConsecutive:
         assert history[0]["content"] == "a"
         assert history[1]["content"] == "b"
 
+    def test_same_sender_merges(self):
+        history = [
+            {"role": "user", "content": "hi", "name": "alice"},
+            {"role": "user", "content": "again", "name": "alice"},
+        ]
+        merged = AgentLoop._merge_consecutive(history)
+        assert len(merged) == 1
+        assert merged[0]["content"] == "hi\n\nagain"
+        assert merged[0]["name"] == "alice"
+
+    def test_different_senders_stay_separate(self):
+        history = [
+            {"role": "user", "content": "hi", "name": "alice"},
+            {"role": "user", "content": "yo", "name": "bob"},
+        ]
+        merged = AgentLoop._merge_consecutive(history)
+        assert len(merged) == 2
+        assert [m["name"] for m in merged] == ["alice", "bob"]
+
 
 # ---------------------------------------------------------------------------
 # _prepare_turn_messages
@@ -851,7 +870,7 @@ class TestPrepareTurnMessages:
         session = loop.sessions.get_or_create("test:1")
         session.add_message("user", "hello")
 
-        history, content, media = loop._prepare_turn_messages(session)
+        history, content, media, sender = loop._prepare_turn_messages(session)
         assert history == []
         assert content == "hello"
         assert media is None
@@ -866,7 +885,7 @@ class TestPrepareTurnMessages:
         session.add_message("user", "msg2")
         session.add_message("user", "msg3")
 
-        history, content, media = loop._prepare_turn_messages(session)
+        history, content, media, sender = loop._prepare_turn_messages(session)
         assert history == []
         assert content == "msg1\n\nmsg2\n\nmsg3"
 
@@ -881,7 +900,7 @@ class TestPrepareTurnMessages:
         session.add_message("user", "new1")
         session.add_message("user", "new2")
 
-        history, content, media = loop._prepare_turn_messages(session)
+        history, content, media, sender = loop._prepare_turn_messages(session)
         assert len(history) == 2  # old user + assistant
         assert content == "new1\n\nnew2"
 
@@ -891,7 +910,7 @@ class TestPrepareTurnMessages:
         loop = await _make_loop(tmp_path, provider)
 
         session = loop.sessions.get_or_create("test:1")
-        history, content, media = loop._prepare_turn_messages(session)
+        history, content, media, sender = loop._prepare_turn_messages(session)
         assert history == []
         assert content is None
 
@@ -904,8 +923,20 @@ class TestPrepareTurnMessages:
         session.add_message("user", "q")
         session.add_message("assistant", "a")
 
-        history, content, media = loop._prepare_turn_messages(session)
+        history, content, media, sender = loop._prepare_turn_messages(session)
         assert content is None
+
+    @pytest.mark.asyncio
+    async def test_carries_current_sender(self, tmp_path):
+        provider = FakeProvider([_ok_response()])
+        loop = await _make_loop(tmp_path, provider)
+
+        session = loop.sessions.get_or_create("test:1")
+        session.add_message("user", "hello", name="thygrrr")
+
+        history, content, media, sender = loop._prepare_turn_messages(session)
+        assert content == "hello"
+        assert sender == "thygrrr"
 
 
 # ---------------------------------------------------------------------------

@@ -394,9 +394,11 @@ You have access to tools that allow you to:
 - Spawn subagents for complex background tasks
 
 ## User Identification
-Messages from chat channels are prefixed with [username] (e.g. "[alice] hello").
-Use this to tell different users apart, especially in group chats.
-Always address users by name when it helps clarify who you're responding to.
+Each chat message is attributed to its sender (the author's name travels with
+the message; some channels also show it inline as a "[username]" prefix, e.g.
+"[alice] hello"). Use the sender to tell different users apart, especially in
+group chats. Always address users by name when it helps clarify who you're
+responding to.
 
 ## Multimodal input
 When a user sends an image, audio clip, or video, it is already attached as
@@ -440,6 +442,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         current_message: str | None = None,
         skill_names: list[str] | None = None,
         media: list[str] | None = None,
+        sender: str | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
         cache_ttl: int | None = None,
@@ -461,6 +464,9 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             current_message: The new user message.
             skill_names: Optional skills to include.
             media: Optional list of local file paths for images/media.
+            sender: Optional human-readable author of the current message. Set
+                as the message's structured sender so the wire format attributes
+                it (OpenAI ``name`` field / Anthropic ``[name]`` prefix).
             channel: Current channel (telegram, feishu, etc.).
             chat_id: Current chat/user ID.
             context_name: Name to key the context cache by.
@@ -521,7 +527,7 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             if step_content:
                 user_parts.append(TextPart(step_content))
 
-            transcript.add(Message(role="user", content=user_parts))
+            transcript.add(Message(role="user", content=user_parts, name=sender))
 
         # Clear volatile sections now that we've used them
         ctx.step.clear()
@@ -532,14 +538,15 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         """Build a loom Message from a persisted history dict (rebuilding media)."""
         role = msg["role"]
         content = msg.get("content", "")
+        name = msg.get("name")
         media = msg.get("media")
         if media and role == "user":
             parts, notes = encode_media_files(media, max_document_bytes=self.max_document_bytes)
             text = content
             if notes:
                 text = (text + "\n" + "\n".join(notes)) if text else "\n".join(notes)
-            return Message(role=role, content=[*parts, TextPart(text)])
-        return Message(role=role, content=[TextPart(content)])
+            return Message(role=role, content=[*parts, TextPart(text)], name=name)
+        return Message(role=role, content=[TextPart(content)], name=name)
 
     def _kept_image_messages(self, kept: list[ImageEntry]) -> list[Message]:
         """Build the kept-image user/assistant pair from topic ImageEntry items."""

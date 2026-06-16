@@ -59,10 +59,12 @@ class Session:
                 else self.messages[-max_messages:]
             )
 
-        # Convert to LLM format (role, content, and optional media paths)
+        # Convert to LLM format (role, content, optional sender name + media paths)
         result = []
         for m in recent:
             entry: dict[str, Any] = {"role": m["role"], "content": m["content"]}
+            if m.get("name"):
+                entry["name"] = m["name"]
             if m.get("media"):
                 entry["media"] = m["media"]
             result.append(entry)

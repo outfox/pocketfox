@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
@@ -314,7 +314,12 @@ class AgentLoop:
     ) -> None:
         """Save user message to session and queue a turn for the context."""
         session = self.sessions.get_or_create(session_key)
-        session.add_message("user", msg.content, **({"media": msg.media} if msg.media else {}))
+        extra: dict[str, Any] = {}
+        if msg.media:
+            extra["media"] = msg.media
+        if msg.sender_name:
+            extra["name"] = msg.sender_name
+        session.add_message("user", msg.content, **extra)
         self.sessions.save(session)
 
         preview = truncate_string(msg.content, 83)
@@ -414,7 +419,9 @@ class AgentLoop:
         current_task.set(tc)
 
         session = self.sessions.get_or_create(session_key)
-        history, current_content, current_media = self._prepare_turn_messages(session)
+        history, current_content, current_media, current_sender = self._prepare_turn_messages(
+            session
+        )
 
         if current_content is None:
             return []
@@ -425,6 +432,7 @@ class AgentLoop:
             history=history,
             current_message=current_content,
             media=current_media,
+            sender=current_sender,
             channel=channel,
             chat_id=chat_id,
             cache_ttl=meta.get("cache_ttl"),
@@ -465,38 +473,42 @@ class AgentLoop:
 
     def _prepare_turn_messages(
         self, session: object
-    ) -> tuple[list[dict], str | None, list[str] | None]:
-        """Split session history into (old_history, current_content, current_media).
+    ) -> tuple[list[dict], str | None, list[str] | None, str | None]:
+        """Split history into (old_history, current_content, current_media, current_sender).
 
-        Merges consecutive same-role messages so the LLM always sees proper
-        user/assistant alternation.  The last user block becomes current_content.
+        Merges consecutive messages from the same role and sender so the LLM
+        sees proper user/assistant alternation.  The last user block becomes the
+        current message, carrying its sender name for attribution.
         """
         raw = session.get_history()
         if not raw:
-            return [], None, None
+            return [], None, None, None
 
         merged = self._merge_consecutive(raw)
 
         if merged and merged[-1]["role"] == "user":
             current = merged.pop()
-            return merged, current["content"], current.get("media")
+            return merged, current["content"], current.get("media"), current.get("name")
 
         logger.warning("No user message at end of session for turn")
-        return merged, None, None
+        return merged, None, None, None
 
     @staticmethod
     def _merge_consecutive(history: list[dict]) -> list[dict]:
-        """Merge consecutive messages with the same role.
+        """Merge consecutive messages from the same role *and* sender.
 
-        Concatenates content with double-newlines.  Combines media lists.
+        Concatenates content with double-newlines and combines media lists.
+        Messages from different senders are kept separate so each retains its
+        own ``name`` — e.g. in a group chat, ``alice`` and ``bob`` stay distinct
+        turns rather than collapsing into one block under a single name.
         """
         if not history:
             return []
 
         merged: list[dict] = []
         for msg in history:
-            if merged and merged[-1]["role"] == msg["role"]:
-                prev = merged[-1]
+            prev = merged[-1] if merged else None
+            if prev and prev["role"] == msg["role"] and prev.get("name") == msg.get("name"):
                 prev["content"] = prev["content"] + "\n\n" + msg["content"]
                 if msg.get("media"):
                     if "media" not in prev:
@@ -672,12 +684,15 @@ class AgentLoop:
         )
         current_task.set(tc)
 
-        history, current_content, current_media = self._prepare_turn_messages(session)
+        history, current_content, current_media, current_sender = self._prepare_turn_messages(
+            session
+        )
 
         messages = self.context.build_messages(
             history=history,
             current_message=current_content,
             media=current_media,
+            sender=current_sender,
             channel=channel,
             chat_id=chat_id,
             cache_ttl=cache_ttl,

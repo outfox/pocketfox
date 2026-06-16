@@ -127,3 +127,31 @@ def test_build_messages_golden(tmp_path: Path) -> None:
 
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
     assert captured == expected
+
+
+def test_sender_renders_to_openai_name_field(tmp_path: Path) -> None:
+    """A message's sender flows through to the OpenAI ``name`` field end-to-end."""
+    ws = _make_workspace(tmp_path)
+    files = ("AGENTS.md", "TOOLS.md", "MEMORY.md")
+    b = ContextBuilder(ws, default_context_files=list(files))
+
+    messages = b.build_messages(
+        history=[
+            {"role": "user", "content": "earlier", "name": "alice"},
+            {"role": "assistant", "content": "ok"},
+        ],
+        current_message="hello!",
+        sender="thygrrr",
+        channel="telegram",
+        chat_id="42",
+        context_files=files,
+    )
+
+    # History keeps each user's name; the assistant has none.
+    history_user = next(m for m in messages if m["role"] == "user" and m.get("name") == "alice")
+    assert history_user["content"] == "earlier"
+
+    # The current (last) user message is attributed to its sender.
+    last_user = messages[-1]
+    assert last_user["role"] == "user"
+    assert last_user["name"] == "thygrrr"

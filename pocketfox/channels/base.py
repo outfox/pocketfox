@@ -104,6 +104,7 @@ class BaseChannel(ABC):
         content: str,
         media: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        sender_name: str | None = None,
     ) -> None:
         """
         Handle an incoming message from the chat platform.
@@ -111,11 +112,15 @@ class BaseChannel(ABC):
         This method checks permissions and forwards to the bus.
 
         Args:
-            sender_id: The sender's identifier.
+            sender_id: The sender's stable identifier (used for the allowlist).
             chat_id: The chat/channel identifier.
             content: Message text content.
             media: Optional list of media URLs.
             metadata: Optional channel-specific metadata.
+            sender_name: Optional human-readable sender (e.g. a chat handle).
+                When given, it flows through as the message's structured sender
+                so serializers can attribute the turn (OpenAI ``name`` field /
+                Anthropic ``[name]`` prefix) instead of baking it into the text.
         """
         if not self.is_allowed(sender_id):
             logger.warning(
@@ -132,6 +137,7 @@ class BaseChannel(ABC):
             sender_id=str(sender_id),
             chat_id=str(chat_id),
             content=content,
+            sender_name=sender_name,
             media=media or [],
             metadata=metadata or {},
         )
