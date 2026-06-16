@@ -66,7 +66,7 @@
         },
         {
           "cache_control": {
-            "max_age_seconds": 3600,
+            "ttl": "1h",
             "type": "ephemeral"
           },
           "text": "# Long-term Memory\n# Memory\nRemember stuff.",
@@ -78,7 +78,7 @@
         },
         {
           "cache_control": {
-            "max_age_seconds": 3600,
+            "ttl": "1h",
             "type": "ephemeral"
           },
           "text": "------\n> TOPIC\n# Current Session\nChannel: telegram\nChat ID: 42\n------",
@@ -103,7 +103,7 @@
       "content": [
         {
           "cache_control": {
-            "max_age_seconds": 3600,
+            "ttl": "1h",
             "type": "ephemeral"
           },
           "text": "reply two",
