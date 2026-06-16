@@ -85,6 +85,12 @@ class ImageEntry(Entry):
             {"type": "text", "text": self.compile()},
         ]
 
+    def to_image_part(self):
+        """Return a format-neutral loom ImagePart for this kept image."""
+        from loom import ImagePart
+
+        return ImagePart(data=self._base64_data, media_type=self._mime_type, caption=self._caption)
+
     def identity(self) -> str:
         """Resolved path for deduplication."""
         return f"image:{self._resolved}"

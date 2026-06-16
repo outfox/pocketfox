@@ -179,7 +179,7 @@ class TestLLMErrorHandling:
 
 
 class TestKeptImageInjection:
-    """Tests for _inject_image_blocks in build_messages."""
+    """Tests for kept-image injection in build_messages."""
 
     def _add_kept_image(self, ctx_builder: ContextBuilder, tmp_path: Path, name: str = "photo.png"):
         entry = ImageEntry(

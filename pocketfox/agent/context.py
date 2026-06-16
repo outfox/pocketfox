@@ -1,15 +1,39 @@
 """Context builder for assembling agent prompts using LOOM."""
 
+import json
 import platform
 from pathlib import Path
-from typing import Any, ClassVar, Callable
+from typing import Any, Callable, ClassVar
 
 from loguru import logger
-from loom import Context, Entry, FileEntry, StringEntry
+from loom.serialize.openai import render_message, render_tool_result
 
+from loom import (
+    CacheHint,
+    Context,
+    Entry,
+    FileEntry,
+    Message,
+    StringEntry,
+    TextPart,
+    ToolCall,
+    ToolResult,
+    Transcript,
+    encode_media_files,
+)
 from pocketfox.agent.entries import DateTimeEntry, ImageEntry
 from pocketfox.agent.memory import MemoryStore
 from pocketfox.agent.skills import SkillsLoader
+
+
+def _decode_arguments(arguments: str | dict[str, Any]) -> dict[str, Any]:
+    """Normalize a tool call's arguments to a dict (loop passes a JSON string)."""
+    if isinstance(arguments, str):
+        try:
+            return json.loads(arguments)
+        except json.JSONDecodeError:
+            return {"raw": arguments}
+    return arguments or {}
 
 
 class ContextBuilder:
@@ -62,6 +86,7 @@ class ContextBuilder:
         workspace: Path,
         default_context_files: list[str] | None = None,
         max_document_bytes: int = 10 * 1024 * 1024,
+        wire_format: str = "openai",
     ):
         self.workspace = workspace
         self.memory = MemoryStore(workspace)
@@ -70,6 +95,9 @@ class ContextBuilder:
         self._contexts: dict[str, Context] = {}
         self._runtime_entry_ids: set[str] = set()  # loom entry .id values added via add_entry()
         self.max_document_bytes = max_document_bytes
+        # Wire format loom serializes to. The live litellm path is OpenAI-shaped;
+        # "anthropic" is available for a future native transport.
+        self.wire_format = wire_format
 
     @property
     def context(self) -> Context:
@@ -89,9 +117,7 @@ class ContextBuilder:
     ) -> Context:
         """Get or create a Context keyed by context_name."""
         if context_name not in self._contexts:
-            self._contexts[context_name] = self._create_context(
-                list(context_files), prologue=prologue
-            )
+            self._contexts[context_name] = self._create_context(list(context_files), prologue=prologue)
         return self._contexts[context_name]
 
     def _create_context(self, context_files: list[str], prologue: str | None = None) -> Context:
@@ -114,9 +140,7 @@ class ContextBuilder:
             if filename == self.MEMORY_FILENAME:
                 include_memory = True
                 if self.memory.memory_file.exists():
-                    ctx.foundation.add(
-                        FileEntry(path=self.memory.memory_file, name="Long-term Memory")
-                    )
+                    ctx.foundation.add(FileEntry(path=self.memory.memory_file, name="Long-term Memory"))
                 continue
             file_path = self.workspace / filename
             if file_path.exists():
@@ -191,9 +215,7 @@ class ContextBuilder:
             ctx = self.context
         section_obj = getattr(ctx, section, None)
         if section_obj is None:
-            raise ValueError(
-                f"Invalid section: {section}. Valid: foundation, focus, topic, step, attention"
-            )
+            raise ValueError(f"Invalid section: {section}. Valid: foundation, focus, topic, step, attention")
 
         if isinstance(content, Entry):
             entry = content
@@ -455,98 +477,78 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             prologue=prologue,
         )
 
-        # System prompt with cache breakpoints (4 total, Anthropic max):
-        # 1. after foundation — largest, most stable (identity, AGENTS, TOOLS, MEMORY)
-        # 2. after topic — daily notes, session info
-        # 3. after non-system entries — loom adds this on the last role message
-        # 4. after last history message — added below in the history loop
-        messages = ctx.to_messages(
-            cache_breakpoints=["foundation", "topic"],
-            clear_volatile=False,  # We'll handle step/attention separately
+        # loom owns the transcript: the system context (foundation/focus/topic/
+        # convo, with cache breakpoints after foundation and topic) plus the
+        # ordered conversation. The serializer renders it to self.wire_format.
+        transcript = Transcript(
+            context=ctx,
+            system_sections=["foundation", "focus", "topic", "convo"],
+            system_cache_breakpoints=["foundation", "topic"],
             cache_ttl=cache_ttl,
-            sections=["foundation", "focus", "topic", "convo"],
         )
 
-        # Add history with cache breakpoint on the LAST message
-        # This allows Anthropic to cache the entire conversation prefix
+        # History — cache breakpoint on the LAST message so the conversation
+        # prefix caches incrementally as it grows.
         if history:
-            breakpoint_idx = len(history) - 1
-            cc: dict = {"type": "ephemeral"}
-            if cache_ttl is not None:
-                cc["max_age_seconds"] = cache_ttl
-
+            last_idx = len(history) - 1
             for i, msg in enumerate(history):
-                # Rebuild content blocks for messages with persisted media paths
-                content = msg.get("content", "")
-                if msg.get("media") and msg["role"] == "user" and isinstance(content, str):
-                    content = self._build_user_content(content, msg["media"])
+                m = self._history_message(msg)
+                if i == last_idx:
+                    m.cache = CacheHint(ttl=cache_ttl)
+                transcript.add(m)
 
-                if i == breakpoint_idx:
-                    # Add cache breakpoint to this message
-                    if isinstance(content, str):
-                        messages.append(
-                            {
-                                "role": msg["role"],
-                                "content": [
-                                    {
-                                        "type": "text",
-                                        "text": content,
-                                        "cache_control": cc,
-                                    }
-                                ],
-                            }
-                        )
-                    else:
-                        # Already a list (e.g., with images), add cache_control to last text block
-                        content_copy = list(content)
-                        for j in range(len(content_copy) - 1, -1, -1):
-                            if content_copy[j].get("type") == "text":
-                                content_copy[j] = {
-                                    **content_copy[j],
-                                    "cache_control": cc,
-                                }
-                                break
-                        messages.append({"role": msg["role"], "content": content_copy})
-                else:
-                    if isinstance(content, str):
-                        messages.append(msg)
-                    else:
-                        # Replace string content with rebuilt content blocks
-                        messages.append({"role": msg["role"], "content": content})
+        # Kept images become a user/assistant pair injected just before the
+        # final (volatile) user message — placing them in the cached region so
+        # they are not re-tokenized every turn.
+        kept = [e for e in ctx.topic.entries if isinstance(e, ImageEntry)]
+        if kept:
+            transcript.messages.extend(self._kept_image_messages(kept))
 
-        # When current_message is None (e.g. context snapshot), skip the user
-        # message, attention, step, and kept images entirely.
+        # Current user message: user text + media, then volatile attention/step.
+        # When current_message is None (context snapshot) we stop after kept
+        # images — no user turn, no volatile data.
         if current_message is not None:
-            # Build user message as content blocks so the user's text stays
-            # separate from volatile context (attention/step)
-            user_content = self._build_user_content(current_message, media)
+            parts, notes = encode_media_files(media, max_document_bytes=self.max_document_bytes)
+            text = current_message
+            if notes:
+                text = (text + "\n" + "\n".join(notes)) if text else "\n".join(notes)
+            user_parts: list[Any] = [*parts, TextPart(text)]
 
-            # Normalise to block format
-            if isinstance(user_content, str):
-                blocks: list[dict[str, Any]] = [{"type": "text", "text": user_content}]
-            else:
-                blocks = list(user_content)
-
-            # Append volatile context as separate blocks (not modifying user text)
             attention_content = self._compile_attention(ctx)
             if attention_content:
-                blocks.append({"type": "text", "text": attention_content})
+                user_parts.append(TextPart(attention_content))
             step_content = self._compile_step(ctx)
             if step_content:
-                blocks.append({"type": "text", "text": step_content})
+                user_parts.append(TextPart(step_content))
 
-            messages.append({"role": "user", "content": blocks})
-
-            # Inject kept image blocks into the conversation
-            self._inject_image_blocks(messages, ctx)
-        else:
-            # Still include kept images in context snapshots (e.g. /context command)
-            self._append_image_blocks(messages, ctx)
+            transcript.add(Message(role="user", content=user_parts))
 
         # Clear volatile sections now that we've used them
         ctx.step.clear()
 
-        return messages
+        return transcript.to_messages(format=self.wire_format)
+
+    def _history_message(self, msg: dict[str, Any]) -> Message:
+        """Build a loom Message from a persisted history dict (rebuilding media)."""
+        role = msg["role"]
+        content = msg.get("content", "")
+        media = msg.get("media")
+        if media and role == "user":
+            parts, notes = encode_media_files(media, max_document_bytes=self.max_document_bytes)
+            text = content
+            if notes:
+                text = (text + "\n" + "\n".join(notes)) if text else "\n".join(notes)
+            return Message(role=role, content=[*parts, TextPart(text)])
+        return Message(role=role, content=[TextPart(content)])
+
+    def _kept_image_messages(self, kept: list[ImageEntry]) -> list[Message]:
+        """Build the kept-image user/assistant pair from topic ImageEntry items."""
+        parts: list[Any] = []
+        for entry in kept:
+            parts.append(entry.to_image_part())
+            parts.append(TextPart(entry.compile()))
+        parts.append(TextPart("[Kept images for reference]"))
+        return [Message(role="user", content=parts), Message.text("assistant", "Noted.")]
 
     def _compile_attention(self, ctx: Context) -> str:
         """Compile the attention section (volatile datetime etc.)."""
@@ -561,147 +563,6 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         if content := ctx.step.compile():
             return content
         return ""
-
-    def _inject_image_blocks(self, messages: list[dict[str, Any]], ctx: Context) -> None:
-        """Inject kept images as a dedicated user/assistant pair before the current user message.
-
-        This places the image blocks in the cached history region so they are
-        not re-tokenized on every turn.  The pair sits just before the final
-        (volatile) user message, maintaining the required user/assistant
-        alternation for the Anthropic API.
-        """
-        image_entries = [e for e in ctx.topic.entries if isinstance(e, ImageEntry)]
-        if not image_entries:
-            return
-
-        # Build content blocks: all kept images + a label
-        image_blocks: list[dict[str, Any]] = []
-        for entry in image_entries:
-            image_blocks.extend(entry.compile_blocks())
-        image_blocks.append({"type": "text", "text": "[Kept images for reference]"})
-
-        # Insert a user/assistant pair just before the final user message
-        image_user_msg: dict[str, Any] = {"role": "user", "content": image_blocks}
-        image_ack_msg: dict[str, Any] = {"role": "assistant", "content": "Noted."}
-        messages.insert(-1, image_user_msg)
-        messages.insert(-1, image_ack_msg)
-
-    def _append_image_blocks(self, messages: list[dict[str, Any]], ctx: Context) -> None:
-        """Append kept images at the end of the message list.
-
-        Used for context snapshots (e.g. /context command) where there is no
-        trailing user message to insert before.
-        """
-        image_entries = [e for e in ctx.topic.entries if isinstance(e, ImageEntry)]
-        if not image_entries:
-            return
-
-        image_blocks: list[dict[str, Any]] = []
-        for entry in image_entries:
-            image_blocks.extend(entry.compile_blocks())
-        image_blocks.append({"type": "text", "text": "[Kept images for reference]"})
-
-        messages.append({"role": "user", "content": image_blocks})
-        messages.append({"role": "assistant", "content": "Noted."})
-
-    # Video extensions that should be encoded as video_url content blocks
-    _VIDEO_SUFFIXES: ClassVar[set[str]] = {".mp4", ".webm", ".mov", ".avi"}
-
-    def _build_user_content(self, text: str, media: list[str] | None) -> str | list[dict[str, Any]]:
-        """Build user message content with optional base64-encoded images/videos/documents."""
-        if not media:
-            return text
-
-        from pocketfox.utils.document import (
-            DOCUMENT_SUFFIXES,
-            encode_document_block,
-            extract_document_text,
-        )
-        from pocketfox.utils.image import encode_image_file
-
-        max_doc = self.max_document_bytes
-        media_blocks: list[dict[str, Any]] = []
-        notes: list[str] = []
-        for path in media:
-            p = Path(path)
-            if not p.is_file():
-                continue
-
-            suffix = p.suffix.lower()
-
-            if suffix in self._VIDEO_SUFFIXES:
-                block = self._encode_video_block(p)
-                if block:
-                    media_blocks.append(block)
-                else:
-                    notes.append(f"(video {p.name} skipped: exceeds size limit or unreadable)")
-                continue
-
-            if suffix in DOCUMENT_SUFFIXES:
-                # Try native MIME-annotated content block first
-                doc_block = encode_document_block(p, max_bytes=max_doc)
-                if doc_block:
-                    media_blocks.append(doc_block)
-                    continue
-                # Fall back to text extraction
-                doc_text = extract_document_text(p, max_bytes=max_doc)
-                if doc_text:
-                    media_blocks.append({
-                        "type": "text",
-                        "text": f"[Document: {p.name}]\n{doc_text}\n[End of {p.name}]",
-                    })
-                else:
-                    notes.append(
-                        f"(document {p.name} skipped: unsupported, missing library, or exceeds "
-                        f"{max_doc / 1024 / 1024:.0f} MiB limit)"
-                    )
-                continue
-
-            result = encode_image_file(p)
-            if result is None:
-                notes.append(f"(media {p.name} skipped: unsupported format or exceeds 5 MB limit)")
-                continue
-            data_uri, _b64, _mime, re_encoded = result
-            if re_encoded:
-                notes.append(f"(image {p.name} re-encoded to jpeg)")
-            media_blocks.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": data_uri},
-                }
-            )
-
-        if notes:
-            text = text + "\n" + "\n".join(notes) if text else "\n".join(notes)
-
-        if not media_blocks:
-            return text
-        return media_blocks + [{"type": "text", "text": text}]
-
-    @staticmethod
-    def _encode_video_block(path: Path) -> dict[str, Any] | None:
-        """Encode a video file as a base64 video_url content block."""
-        import base64
-        import mimetypes as mt
-
-        max_bytes = 20 * 1024 * 1024  # 20 MB limit for video
-        raw = path.read_bytes()
-        if len(raw) > max_bytes:
-            logger.warning(
-                f"Video {path.name} too large "
-                f"({len(raw) / 1024 / 1024:.1f} MB > 20 MB)"
-            )
-            return None
-        mime, _ = mt.guess_type(str(path))
-        if not mime:
-            _fallback = {".mp4": "video/mp4", ".webm": "video/webm",
-                         ".mov": "video/quicktime", ".avi": "video/x-msvideo"}
-            mime = _fallback.get(path.suffix.lower(), "video/mp4")
-        b64 = base64.b64encode(raw).decode("ascii")
-        return {
-            "type": "video_url",
-            "video_url": {"url": f"data:{mime};base64,{b64}"},
-        }
 
     def add_tool_result(
         self,
@@ -735,30 +596,10 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
             tool_results for the current assistant turn have been written.
             Empty list when there are no images.
         """
-        if isinstance(result, list):
-            # Split multimodal content: text → tool result, images → buffered for caller
-            text_parts = [b["text"] for b in result if b.get("type") == "text"]
-            image_parts = [b for b in result if b.get("type") == "image_url"]
-
-            messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "name": tool_name,
-                    "content": "\n".join(text_parts) or "(see image below)",
-                }
-            )
-            return image_parts
-
-        messages.append(
-            {
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "name": tool_name,
-                "content": result,
-            }
-        )
-        return []
+        tr = ToolResult.from_tool_output(tool_call_id, tool_name, result)
+        tool_dict, image_blocks = render_tool_result(tr)
+        messages.append(tool_dict)
+        return image_blocks
 
     def add_assistant_message(
         self,
@@ -773,20 +614,27 @@ When remembering something, write to {workspace_path}/memory/MEMORY.md"""
         Args:
             messages: Current message list.
             content: Message content.
-            tool_calls: Optional tool calls.
+            tool_calls: Optional tool calls (OpenAI function-call dict shape).
             reasoning_content: Thinking output (Kimi, DeepSeek-R1, etc.).
 
         Returns:
             Updated message list.
         """
-        msg: dict[str, Any] = {"role": "assistant", "content": content or ""}
-
         if tool_calls:
-            msg["tool_calls"] = tool_calls
-
-        # Thinking models reject history without this
-        if reasoning_content:
-            msg["reasoning_content"] = reasoning_content
-
-        messages.append(msg)
+            calls = [
+                ToolCall(
+                    id=tc["id"],
+                    name=tc["function"]["name"],
+                    arguments=_decode_arguments(tc["function"]["arguments"]),
+                )
+                for tc in tool_calls
+            ]
+            msg = Message.assistant_tool_call(content, calls, reasoning=reasoning_content)
+        else:
+            msg = Message(
+                role="assistant",
+                content=[TextPart(content or "")],
+                reasoning=reasoning_content,
+            )
+        messages.extend(render_message(msg))
         return messages
