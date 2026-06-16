@@ -176,9 +176,15 @@ WORKDIR /root/any2any
 RUN uv pip install --system --no-cache .
 
 
-# Finally, the main agent code
+# Finally, the main agent code.
+# --no-sources is REQUIRED: pocketfox's [tool.uv.sources] pins context-loom to
+# `{ path = "loom", editable = true }`, so a plain install reinstalls loom as an
+# *editable* .pth pointing at /root/pocketfox/loom/src. That source lives under
+# /root (mode 700) and is unreadable by the non-root runtime user, so `import
+# loom` fails with ModuleNotFoundError. --no-sources makes uv ignore that table
+# and keep loom as the copied site-packages install from the step above.
 WORKDIR /root/pocketfox
-RUN uv pip install --system --no-cache .
+RUN uv pip install --system --no-cache --no-sources .
 
 # General environments
 ENV CLAUDE_CODE_USE_BEDROCK=0
