@@ -214,23 +214,40 @@ class AgentLoop:
     # ------------------------------------------------------------------
 
     async def _ingest_loop(self) -> None:
-        """Continuously consume inbound messages, save to sessions, queue turns."""
+        """Continuously consume inbound messages, save to sessions, queue turns.
+
+        After the first (blocking) message, drain any other immediately-available
+        messages and ingest the whole burst synchronously before yielding. This
+        keeps messages that arrive together in a single turn: otherwise the
+        per-context turn loops can race in and fire a turn per message, since the
+        turn execution between two ``consume_inbound`` calls runs to completion
+        without yielding.
+        """
         while self._running:
             try:
                 msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
-            try:
-                self._ingest_message(msg)
-            except Exception as e:
-                logger.error(f"Error ingesting message: {e}")
-                await self.bus.publish_outbound(
-                    OutboundMessage(
-                        channel=msg.channel,
-                        chat_id=msg.chat_id,
-                        content=f"Sorry, I encountered an error: {str(e)}",
+
+            batch = [msg]
+            while True:
+                try:
+                    batch.append(self.bus.inbound.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+
+            for m in batch:
+                try:
+                    self._ingest_message(m)
+                except Exception as e:
+                    logger.error(f"Error ingesting message: {e}")
+                    await self.bus.publish_outbound(
+                        OutboundMessage(
+                            channel=m.channel,
+                            chat_id=m.chat_id,
+                            content=f"Sorry, I encountered an error: {str(e)}",
+                        )
                     )
-                )
 
     def _ingest_message(self, msg: InboundMessage) -> None:
         """Route a message, save it to the appropriate session(s), and queue turns."""
